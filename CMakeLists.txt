@@ -52,6 +52,7 @@ endif()
 
 # Examples
 if(AGENTC_BUILD_EXAMPLES)
+    # Simple command-line chat demo
     add_executable(chat_demo 
         examples/terminal/chat_demo.c
         ${DOTENV_SOURCES}
@@ -63,6 +64,36 @@ if(AGENTC_BUILD_EXAMPLES)
     target_link_libraries(chat_demo PRIVATE agentc)
     if(AGENTC_USE_CURL)
         target_link_libraries(chat_demo PRIVATE CURL::libcurl)
+    endif()
+    
+    # TUI chat demo with Notcurses (WeChat-style interface)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(NOTCURSES notcurses)
+    endif()
+    
+    if(NOTCURSES_FOUND)
+        add_executable(chat_tui
+            examples/terminal/chat_tui.c
+            ${DOTENV_SOURCES}
+        )
+        target_include_directories(chat_tui PRIVATE
+            ${DOTENV_INCLUDE}
+            ${CJSON_INCLUDE}
+            ${NOTCURSES_INCLUDE_DIRS}
+        )
+        target_link_libraries(chat_tui PRIVATE 
+            agentc 
+            ${NOTCURSES_LIBRARIES}
+        )
+        target_link_directories(chat_tui PRIVATE ${NOTCURSES_LIBRARY_DIRS})
+        if(AGENTC_USE_CURL)
+            target_link_libraries(chat_tui PRIVATE CURL::libcurl)
+        endif()
+        message(STATUS "Building chat_tui with Notcurses support")
+    else()
+        message(STATUS "Notcurses not found, skipping chat_tui build")
+        message(STATUS "  Install with: sudo apt install libnotcurses-dev")
     endif()
 endif()
 
