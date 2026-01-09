@@ -53,7 +53,7 @@ endif()
 # Examples
 if(AGENTC_BUILD_EXAMPLES)
     add_executable(chat_demo 
-        examples/chat_demo.c
+        examples/terminal/chat_demo.c
         ${DOTENV_SOURCES}
     )
     target_include_directories(chat_demo PRIVATE
