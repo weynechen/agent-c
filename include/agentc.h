@@ -22,6 +22,8 @@
 #include "agentc/platform.h"
 #include "agentc/http_client.h"
 #include "agentc/llm.h"
+#include "agentc/tool.h"
+#include "agentc/agent.h"
 
 #ifdef __cplusplus
 extern "C" {
