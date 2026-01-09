@@ -16,6 +16,12 @@ extern "C" {
 #endif
 
 /*============================================================================
+ * Forward Declarations
+ *============================================================================*/
+
+struct agentc_tool_call;  /* Defined in tool.h */
+
+/*============================================================================
  * Message Role
  *============================================================================*/
 
@@ -32,9 +38,10 @@ typedef enum {
 
 typedef struct agentc_message {
     agentc_role_t role;
-    const char *content;
-    const char *name;                   /* Optional: for tool messages */
-    const char *tool_call_id;           /* Optional: for tool responses */
+    char *content;                       /* Message content (may be NULL for tool_calls) */
+    char *name;                          /* Optional: for tool messages */
+    char *tool_call_id;                  /* Optional: for tool responses */
+    struct agentc_tool_call *tool_calls; /* Optional: for assistant tool calls */
     struct agentc_message *next;
 } agentc_message_t;
 
@@ -62,6 +69,11 @@ typedef struct {
     int max_tokens;                     /* Max tokens to generate (0 = no limit) */
     int stream;                         /* 1 = streaming, 0 = blocking */
     const char *stop;                   /* Stop sequence (optional) */
+
+    /* Tool calling support */
+    const char *tools_json;             /* Tools JSON array string (optional) */
+    const char *tool_choice;            /* "auto", "none", "required" (optional) */
+    int parallel_tool_calls;            /* Allow parallel tool calls (default: 1) */
 } agentc_chat_request_t;
 
 /*============================================================================
@@ -71,8 +83,9 @@ typedef struct {
 typedef struct {
     char *id;                           /* Response ID */
     char *model;                        /* Model used */
-    char *content;                      /* Assistant message content */
+    char *content;                      /* Assistant message content (may be NULL) */
     char *finish_reason;                /* stop, length, tool_calls, etc. */
+    struct agentc_tool_call *tool_calls; /* Tool calls (if finish_reason == "tool_calls") */
     int prompt_tokens;                  /* Input tokens used */
     int completion_tokens;              /* Output tokens generated */
     int total_tokens;                   /* Total tokens */
@@ -89,6 +102,18 @@ typedef struct {
 typedef int (*agentc_llm_stream_callback_t)(
     const char *delta,                  /* New content chunk */
     size_t len,                         /* Chunk length */
+    void *user_data                     /* User context */
+);
+
+/**
+ * Called when streaming receives tool call chunks.
+ * Return 0 to continue, non-zero to abort.
+ */
+typedef int (*agentc_llm_stream_tool_callback_t)(
+    int index,                          /* Tool call index */
+    const char *id,                     /* Tool call ID (may be NULL after first chunk) */
+    const char *name,                   /* Function name (may be NULL after first chunk) */
+    const char *arguments_delta,        /* Arguments delta */
     void *user_data                     /* User context */
 );
 
@@ -199,6 +224,30 @@ void agentc_chat_response_free(agentc_chat_response_t *response);
 agentc_message_t *agentc_message_create(agentc_role_t role, const char *content);
 
 /**
+ * @brief Create a tool result message
+ *
+ * @param tool_call_id  ID of the tool call this responds to
+ * @param content       Tool result content
+ * @return New message (caller must free), NULL on error
+ */
+agentc_message_t *agentc_message_create_tool_result(
+    const char *tool_call_id,
+    const char *content
+);
+
+/**
+ * @brief Create an assistant message with tool calls
+ *
+ * @param content     Optional text content (can be NULL)
+ * @param tool_calls  Tool calls (ownership transferred to message)
+ * @return New message (caller must free), NULL on error
+ */
+agentc_message_t *agentc_message_create_assistant_tool_calls(
+    const char *content,
+    struct agentc_tool_call *tool_calls
+);
+
+/**
  * @brief Append message to list
  *
  * @param list     Pointer to message list head
@@ -220,6 +269,14 @@ void agentc_message_free(agentc_message_t *list);
  * @return Role string ("system", "user", "assistant", "tool")
  */
 const char *agentc_role_to_string(agentc_role_t role);
+
+/**
+ * @brief Clone a tool call list
+ *
+ * @param calls  Tool calls to clone
+ * @return Cloned list (caller must free)
+ */
+struct agentc_tool_call *agentc_tool_call_clone(const struct agentc_tool_call *calls);
 
 #ifdef __cplusplus
 }

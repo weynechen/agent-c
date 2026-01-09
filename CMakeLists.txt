@@ -77,6 +77,8 @@ set(AGENTC_SOURCES
     src/agentc.c
     src/http_client.c
     src/llm.c
+    src/tool.c
+    src/agent.c
     ${CJSON_SOURCES}
 )
 
@@ -110,6 +112,20 @@ if(AGENTC_BUILD_EXAMPLES)
     target_link_libraries(chat_demo PRIVATE agentc)
     if(AGENTC_USE_CURL)
         target_link_libraries(chat_demo PRIVATE CURL::libcurl)
+    endif()
+    
+    # Tool calling / ReACT Agent demo
+    add_executable(chat_tools
+        examples/terminal/chat_tools.c
+        ${DOTENV_SOURCES}
+    )
+    target_include_directories(chat_tools PRIVATE
+        ${DOTENV_INCLUDE}
+        ${CJSON_INCLUDE}
+    )
+    target_link_libraries(chat_tools PRIVATE agentc m)
+    if(AGENTC_USE_CURL)
+        target_link_libraries(chat_tools PRIVATE CURL::libcurl)
     endif()
     
     # Markdown rendering demo
