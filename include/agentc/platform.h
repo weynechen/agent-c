@@ -115,6 +115,11 @@
     #endif
 #endif
 
+#if defined(_WIN32)
+    #define strcasecmp _stricmp
+    #define strncasecmp _strnicmp
+#endif
+
 /*============================================================================
  * Debug/Logging
  *============================================================================*/

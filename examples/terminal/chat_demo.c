@@ -16,6 +16,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #include "agentc.h"
 #include "dotenv.h"
 
@@ -58,6 +61,12 @@ static void on_stream_done(const char *finish_reason, int total_tokens, void *us
 int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
+
+#ifdef _WIN32
+    /* Set console to UTF-8 mode for proper Unicode display */
+    SetConsoleOutputCP(65001);
+    SetConsoleCP(65001);
+#endif
     
     /* Load environment from .env file */
     if (env_load(".", false) == 0) {

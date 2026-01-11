@@ -8,7 +8,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <windows.h>
+#define sleep(ms) Sleep(ms)
+#define usleep(us) Sleep((us)/1000)
+#else
 #include <unistd.h>
+#endif
 
 /* Include the markdown library */
 #include "render/markdown/md.h"
@@ -141,6 +147,12 @@ static void print_usage(const char* program) {
 }
 
 int main(int argc, char* argv[]) {
+#ifdef _WIN32
+    /* Set console to UTF-8 mode for proper Unicode display */
+    SetConsoleOutputCP(65001);
+    SetConsoleCP(65001);
+#endif
+
     int show_demo = 1;
     int show_stream = 0;
     const char* file_path = NULL;

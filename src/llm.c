@@ -292,10 +292,8 @@ static char *build_chat_request_json(
         cJSON_AddNumberToObject(root, "max_tokens", request->max_tokens);
     }
 
-    /* Stream */
-    if (stream) {
-        cJSON_AddBoolToObject(root, "stream", 1);
-    }
+    /* Stream - always set explicitly for compatibility with some APIs (e.g., Aliyun DashScope) */
+    cJSON_AddBoolToObject(root, "stream", stream ? 1 : 0);
 
     /* Tools */
     if (request->tools_json && strlen(request->tools_json) > 0) {
@@ -511,7 +509,7 @@ agentc_err_t agentc_llm_chat(
 
     agentc_http_header_t *headers = NULL;
     agentc_http_header_append(&headers,
-        agentc_http_header_create("Content-Type", "application/json"));
+        agentc_http_header_create("Content-Type", "application/json; charset=utf-8"));
     agentc_http_header_append(&headers,
         agentc_http_header_create("Authorization", auth_header));
 
@@ -706,7 +704,7 @@ agentc_err_t agentc_llm_chat_stream(
 
     agentc_http_header_t *headers = NULL;
     agentc_http_header_append(&headers,
-        agentc_http_header_create("Content-Type", "application/json"));
+        agentc_http_header_create("Content-Type", "application/json; charset=utf-8"));
     agentc_http_header_append(&headers,
         agentc_http_header_create("Authorization", auth_header));
 

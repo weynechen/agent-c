@@ -4,6 +4,10 @@ project(agentc VERSION 0.1.0 LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+if(MSVC)
+    add_compile_options(/utf-8)
+endif()
+
 # Options
 option(AGENTC_BUILD_EXAMPLES "Build example programs" ON)
 option(AGENTC_USE_CURL "Use libcurl backend (default on desktop)" ON)
@@ -123,7 +127,10 @@ if(AGENTC_BUILD_EXAMPLES)
         ${DOTENV_INCLUDE}
         ${CJSON_INCLUDE}
     )
-    target_link_libraries(chat_tools PRIVATE agentc m)
+    if(NOT WIN32)
+        target_link_libraries(chat_tools PRIVATE m)
+    endif()
+    target_link_libraries(chat_tools PRIVATE agentc)
     if(AGENTC_USE_CURL)
         target_link_libraries(chat_tools PRIVATE CURL::libcurl)
     endif()

@@ -301,10 +301,45 @@ static void print_usage(const char *prog) {
 }
 
 int main(int argc, char *argv[]) {
+#ifdef _WIN32
+    /* Set console to UTF-8 mode for proper Unicode display */
+    SetConsoleOutputCP(65001);
+    SetConsoleCP(65001);
+#endif
+
     if (argc < 2) {
         print_usage(argv[0]);
         return 1;
     }
+
+#ifdef _WIN32
+    /* 
+     * On Windows, argv[] uses system default encoding (usually GBK).
+     * We need to use Windows API to get UTF-8 encoded arguments.
+     */
+    char *user_prompt = NULL;
+    {
+        int wargc;
+        LPWSTR *wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
+        if (wargv && wargc >= 2) {
+            /* Convert wargv[1] (user prompt) to UTF-8 */
+            int utf8_len = WideCharToMultiByte(CP_UTF8, 0, wargv[1], -1, NULL, 0, NULL, NULL);
+            if (utf8_len > 0) {
+                user_prompt = (char*)malloc(utf8_len);
+                if (user_prompt) {
+                    WideCharToMultiByte(CP_UTF8, 0, wargv[1], -1, user_prompt, utf8_len, NULL, NULL);
+                }
+            }
+            LocalFree(wargv);
+        }
+    }
+    if (!user_prompt) {
+        fprintf(stderr, "Error: Failed to parse command line arguments\n");
+        return 1;
+    }
+#else
+    const char *user_prompt = argv[1];
+#endif
 
     /* Load .env file */
     env_load(".", 0);
@@ -396,10 +431,9 @@ int main(int argc, char *argv[]) {
     }
 
     /* Run agent with user input */
-    const char *user_input = argv[1];
     agentc_run_result_t result = {0};
 
-    err = agentc_agent_run(agent, user_input, &result);
+    err = agentc_agent_run(agent, user_prompt, &result);
     if (err != AGENTC_OK) {
         fprintf(stderr, "Agent run failed: %s\n", agentc_strerror(err));
     }
@@ -417,6 +451,10 @@ int main(int argc, char *argv[]) {
     agentc_tool_registry_destroy(tools);
     agentc_llm_destroy(llm);
     agentc_cleanup();
+
+#ifdef _WIN32
+    free(user_prompt);
+#endif
 
     return (err == AGENTC_OK && result.status == AGENTC_RUN_SUCCESS) ? 0 : 1;
 }
