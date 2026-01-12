@@ -104,14 +104,22 @@ endif()
 
 # Examples
 if(AGENTC_BUILD_EXAMPLES)
-    # Simple command-line chat demo
+    # Simple command-line chat demo with Markdown rendering
     add_executable(chat_demo 
         examples/terminal/chat_demo.c
         ${DOTENV_SOURCES}
+        ${MARKDOWN_SOURCES}
+        ${PCRE2_SOURCES}
     )
     target_include_directories(chat_demo PRIVATE
         ${DOTENV_INCLUDE}
         ${CJSON_INCLUDE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${PCRE2_INCLUDE}
+    )
+    target_compile_definitions(chat_demo PRIVATE
+        HAVE_CONFIG_H
+        PCRE2_CODE_UNIT_WIDTH=8
     )
     target_link_libraries(chat_demo PRIVATE agentc)
     if(AGENTC_USE_CURL)
