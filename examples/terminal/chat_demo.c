@@ -21,11 +21,14 @@
 #endif
 #include "agentc.h"
 #include "dotenv.h"
+#include "render/markdown/md.h"
 
 #define MAX_INPUT_LEN 4096
 #define MAX_HISTORY 20
 
 static volatile int g_running = 1;
+static md_stream_t *g_md_stream = NULL;
+static int g_use_markdown = 1;
 
 static void signal_handler(int sig) {
     (void)sig;
@@ -39,19 +42,27 @@ static void print_usage(void) {
     printf("  /clear    - Clear conversation history\n");
     printf("  /model    - Show current model\n");
     printf("  /stream   - Toggle streaming mode\n");
+    printf("  /md       - Toggle markdown rendering\n");
     printf("  /quit     - Exit\n\n");
 }
 
 /* Streaming callback - print tokens as they arrive */
 static int on_stream_chunk(const char *data, size_t len, void *user_data) {
     (void)user_data;
-    fwrite(data, 1, len, stdout);
-    fflush(stdout);
+    if (g_use_markdown && g_md_stream) {
+        md_stream_feed(g_md_stream, data, len);
+    } else {
+        fwrite(data, 1, len, stdout);
+        fflush(stdout);
+    }
     return g_running ? 0 : -1;  /* Return -1 to abort if interrupted */
 }
 
 static void on_stream_done(const char *finish_reason, int total_tokens, void *user_data) {
     (void)user_data;
+    if (g_use_markdown && g_md_stream) {
+        md_stream_finish(g_md_stream);
+    }
     printf("\n");
     if (finish_reason) {
         printf("[%s, %d tokens]\n", finish_reason, total_tokens);
@@ -116,6 +127,7 @@ int main(int argc, char *argv[]) {
     printf("\n=== AgentC Chat Demo ===\n");
     printf("Model: %s\n", model ? model : "gpt-3.5-turbo");
     printf("Endpoint: %s\n", base_url ? base_url : "https://api.openai.com/v1");
+    printf("Markdown: %s (use /md to toggle)\n", g_use_markdown ? "ON" : "OFF");
     printf("Type /help for commands, /quit to exit\n\n");
     
     /* Conversation history */
@@ -170,6 +182,10 @@ int main(int argc, char *argv[]) {
                 use_streaming = !use_streaming;
                 printf("[Streaming: %s]\n", use_streaming ? "ON" : "OFF");
                 continue;
+            } else if (strcmp(input, "/md") == 0) {
+                g_use_markdown = !g_use_markdown;
+                printf("[Markdown rendering: %s]\n", g_use_markdown ? "ON" : "OFF");
+                continue;
             } else {
                 printf("[Unknown command: %s]\n", input);
                 continue;
@@ -190,12 +206,22 @@ int main(int argc, char *argv[]) {
         fflush(stdout);
         
         if (use_streaming) {
-            /* Streaming mode */
+            /* Streaming mode - create markdown stream if enabled */
+            if (g_use_markdown) {
+                g_md_stream = md_stream_new();
+            }
+            
             err = agentc_llm_chat_stream(llm, &req, 
                 on_stream_chunk, on_stream_done, NULL);
             
             if (err != AGENTC_OK) {
                 printf("\n[Error: %s]\n", agentc_strerror(err));
+            }
+            
+            /* Clean up markdown stream */
+            if (g_md_stream) {
+                md_stream_free(g_md_stream);
+                g_md_stream = NULL;
             }
             /* Note: In streaming mode, we don't easily get the full response
                to add to history. A real implementation would accumulate it. */
@@ -205,7 +231,11 @@ int main(int argc, char *argv[]) {
             err = agentc_llm_chat(llm, &req, &resp);
             
             if (err == AGENTC_OK && resp.content) {
-                printf("%s\n", resp.content);
+                if (g_use_markdown) {
+                    md_render(resp.content);
+                } else {
+                    printf("%s\n", resp.content);
+                }
                 printf("[%s, %d tokens]\n", 
                     resp.finish_reason ? resp.finish_reason : "done",
                     resp.total_tokens);
