@@ -4,7 +4,6 @@
  */
 
 #include "agentc.h"
-#include <string.h>
 
 static int s_initialized = 0;
 
