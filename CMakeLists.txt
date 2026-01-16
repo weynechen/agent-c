@@ -82,6 +82,7 @@ set(AGENTC_SOURCES
     src/http_client.c
     src/llm.c
     src/tool.c
+    src/memory.c
     src/agent.c
     ${CJSON_SOURCES}
 )

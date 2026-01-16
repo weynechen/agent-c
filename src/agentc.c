@@ -7,7 +7,7 @@
 
 static int s_initialized = 0;
 
-agentc_err_t agentc_init(void) {
+agentc_err_t ac_init(void) {
     if (s_initialized) {
         return AGENTC_OK;
     }
@@ -18,25 +18,25 @@ agentc_err_t agentc_init(void) {
     }
 
     s_initialized = 1;
-    AGENTC_LOG_INFO("AgentC %s initialized", AGENTC_VERSION_STRING);
+    AC_LOG_INFO("AgentC %s initialized", AGENTC_VERSION_STRING);
     return AGENTC_OK;
 }
 
-void agentc_cleanup(void) {
+void ac_cleanup(void) {
     if (!s_initialized) {
         return;
     }
 
     agentc_http_cleanup();
     s_initialized = 0;
-    AGENTC_LOG_INFO("AgentC cleaned up");
+    AC_LOG_INFO("AgentC cleaned up");
 }
 
-const char *agentc_version(void) {
+const char *ac_version(void) {
     return AGENTC_VERSION_STRING;
 }
 
-const char *agentc_strerror(agentc_err_t err) {
+const char *ac_strerror(agentc_err_t err) {
     switch (err) {
         case AGENTC_OK:                  return "Success";
         case AGENTC_ERR_INVALID_ARG:     return "Invalid argument";

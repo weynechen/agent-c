@@ -124,24 +124,24 @@
  * Debug/Logging
  *============================================================================*/
 
-#ifndef AGENTC_LOG_LEVEL
-    #define AGENTC_LOG_LEVEL 2  /* 0=off, 1=error, 2=warn, 3=info, 4=debug */
+#ifndef AC_LOG_LEVEL
+    #define AC_LOG_LEVEL 3  /* 0=off, 1=error, 2=warn, 3=info, 4=debug */
 #endif
 
-#ifndef AGENTC_LOG
+#ifndef AC_LOG
     #include <stdio.h>
-    #define AGENTC_LOG(level, fmt, ...) \
+    #define AC_LOG(level, fmt, ...) \
         do { \
-            if ((level) <= AGENTC_LOG_LEVEL) { \
-                fprintf(stderr, "[AGENTC] " fmt "\n", ##__VA_ARGS__); \
+            if ((level) <= AC_LOG_LEVEL) { \
+                printf("[AGENTC] " fmt "\n", ##__VA_ARGS__); \
             } \
         } while(0)
 #endif
 
-#define AGENTC_LOG_ERROR(fmt, ...) AGENTC_LOG(1, "ERROR: " fmt, ##__VA_ARGS__)
-#define AGENTC_LOG_WARN(fmt, ...)  AGENTC_LOG(2, "WARN: " fmt, ##__VA_ARGS__)
-#define AGENTC_LOG_INFO(fmt, ...)  AGENTC_LOG(3, "INFO: " fmt, ##__VA_ARGS__)
-#define AGENTC_LOG_DEBUG(fmt, ...) AGENTC_LOG(4, "DEBUG: " fmt, ##__VA_ARGS__)
+#define AC_LOG_ERROR(fmt, ...) AC_LOG(1, "ERROR: " fmt, ##__VA_ARGS__)
+#define AC_LOG_WARN(fmt, ...)  AC_LOG(2, "WARN: " fmt, ##__VA_ARGS__)
+#define AC_LOG_INFO(fmt, ...)  AC_LOG(3, "INFO: " fmt, ##__VA_ARGS__)
+#define AC_LOG_DEBUG(fmt, ...) AC_LOG(4, "DEBUG: " fmt, ##__VA_ARGS__)
 
 /*============================================================================
  * Static Assertions
