@@ -90,12 +90,12 @@ agentc_err_t agentc_http_init(void) {
     
     CURLcode res = curl_global_init(CURL_GLOBAL_DEFAULT);
     if (res != CURLE_OK) {
-        AGENTC_LOG_ERROR("curl_global_init failed: %s", curl_easy_strerror(res));
+        AC_LOG_ERROR("curl_global_init failed: %s", curl_easy_strerror(res));
         return AGENTC_ERR_BACKEND;
     }
     
     s_curl_initialized = 1;
-    AGENTC_LOG_DEBUG("CURL backend initialized");
+    AC_LOG_DEBUG("CURL backend initialized");
     return AGENTC_OK;
 }
 
@@ -103,7 +103,7 @@ void agentc_http_cleanup(void) {
     if (s_curl_initialized) {
         curl_global_cleanup();
         s_curl_initialized = 0;
-        AGENTC_LOG_DEBUG("CURL backend cleaned up");
+        AC_LOG_DEBUG("CURL backend cleaned up");
     }
 }
 
@@ -251,7 +251,7 @@ agentc_err_t agentc_http_request(
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
     
     /* Perform request */
-    AGENTC_LOG_DEBUG("HTTP %s %s", 
+    AC_LOG_DEBUG("HTTP %s %s", 
         request->method == AGENTC_HTTP_POST ? "POST" : "GET", 
         request->url);
     
@@ -264,7 +264,7 @@ agentc_err_t agentc_http_request(
     
     if (res != CURLE_OK) {
         const char *err_msg = curl_easy_strerror(res);
-        AGENTC_LOG_ERROR("CURL request failed: %s", err_msg);
+        AC_LOG_ERROR("CURL request failed: %s", err_msg);
         
         response->error_msg = AGENTC_STRDUP(err_msg);
         AGENTC_FREE(buf.data);
@@ -288,7 +288,7 @@ agentc_err_t agentc_http_request(
     response->body = buf.data;
     response->body_len = buf.size;
     
-    AGENTC_LOG_DEBUG("HTTP response: %d, %zu bytes", response->status_code, response->body_len);
+    AC_LOG_DEBUG("HTTP response: %d, %zu bytes", response->status_code, response->body_len);
     
     return AGENTC_OK;
 }
@@ -359,7 +359,7 @@ agentc_err_t agentc_http_request_stream(
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &ctx);
     
     /* Perform request */
-    AGENTC_LOG_DEBUG("HTTP stream POST %s", request->base.url);
+    AC_LOG_DEBUG("HTTP stream POST %s", request->base.url);
     
     CURLcode res = curl_easy_perform(curl);
     

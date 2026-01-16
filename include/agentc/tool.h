@@ -3,14 +3,16 @@
  * @brief AgentC Tool Definition and Registry
  *
  * Defines tools that can be called by the LLM during ReACT loop.
- * Similar to OpenAI Agents SDK function tools.
+ * 
+ * Future: Tools can be marked with @agentc_tool annotation for automatic
+ * registration via moc (meta-object compiler).
  */
 
 #ifndef AGENTC_TOOL_H
 #define AGENTC_TOOL_H
 
 #include "platform.h"
-#include "http_client.h"  /* for agentc_err_t */
+#include "http_client.h"
 #include <stddef.h>
 
 #ifdef __cplusplus
@@ -28,44 +30,44 @@ struct cJSON;  /* cJSON forward declaration */
  *============================================================================*/
 
 typedef enum {
-    AGENTC_PARAM_STRING,
-    AGENTC_PARAM_INTEGER,
-    AGENTC_PARAM_NUMBER,
-    AGENTC_PARAM_BOOLEAN,
-    AGENTC_PARAM_OBJECT,
-    AGENTC_PARAM_ARRAY,
-} agentc_param_type_t;
+    AC_PARAM_STRING,
+    AC_PARAM_INTEGER,
+    AC_PARAM_NUMBER,
+    AC_PARAM_BOOLEAN,
+    AC_PARAM_OBJECT,
+    AC_PARAM_ARRAY,
+} ac_param_type_t;
 
-typedef struct agentc_param {
+typedef struct ac_param {
     const char *name;              /* Parameter name */
-    agentc_param_type_t type;      /* Parameter type */
+    ac_param_type_t type;          /* Parameter type */
     const char *description;       /* Parameter description */
     int required;                  /* 1 = required, 0 = optional */
     const char *enum_values;       /* Comma-separated enum values (optional) */
-    struct agentc_param *next;     /* Linked list */
-} agentc_param_t;
+    struct ac_param *next;         /* Linked list */
+} ac_param_t;
 
 /*============================================================================
  * Tool Call (returned by LLM)
  *============================================================================*/
 
-typedef struct agentc_tool_call {
+typedef struct ac_tool_call {
     char *id;                      /* Unique call ID (from LLM) */
     char *name;                    /* Function name */
     char *arguments;               /* JSON string of arguments */
-    struct agentc_tool_call *next; /* Linked list for parallel calls */
-} agentc_tool_call_t;
+    struct ac_tool_call *next;     /* Linked list for parallel calls */
+} ac_tool_call_t;
 
 /*============================================================================
  * Tool Result
  *============================================================================*/
 
-typedef struct agentc_tool_result {
+typedef struct ac_tool_result {
     char *tool_call_id;            /* Corresponding call ID */
     char *output;                  /* Result string (JSON or text) */
     int is_error;                  /* 1 if this is an error result */
-    struct agentc_tool_result *next;
-} agentc_tool_result_t;
+    struct ac_tool_result *next;
+} ac_tool_result_t;
 
 /*============================================================================
  * Tool Handler Function
@@ -74,12 +76,25 @@ typedef struct agentc_tool_result {
 /**
  * Tool execution handler.
  *
+ * Example:
+ * @code
+ * // @agentc_tool
+ * // @tools_group: weather
+ * // @description: Get the current weather for a city
+ * agentc_err_t tool_get_weather(const cJSON *args, char **output, void *user_data) {
+ *     const char *city = cJSON_GetStringValue(cJSON_GetObjectItem(args, "city"));
+ *     *output = malloc(256);
+ *     snprintf(*output, 256, "The weather in %s is sunny with 25°C.", city);
+ *     return AGENTC_OK;
+ * }
+ * @endcode
+ *
  * @param arguments  Parsed JSON arguments (cJSON object)
  * @param output     Output string (caller must free)
  * @param user_data  User context
  * @return AGENTC_OK on success, error code on failure
  */
-typedef agentc_err_t (*agentc_tool_handler_t)(
+typedef agentc_err_t (*ac_tool_handler_t)(
     const struct cJSON *arguments,
     char **output,
     void *user_data
@@ -89,103 +104,104 @@ typedef agentc_err_t (*agentc_tool_handler_t)(
  * Tool Definition
  *============================================================================*/
 
-typedef struct agentc_tool {
+typedef struct ac_tool {
     char *name;                    /* Function name (required) */
     char *description;             /* Description for LLM (required) */
-    agentc_param_t *parameters;    /* Parameter definitions (NULL = no params) */
-    agentc_tool_handler_t handler; /* Execution handler (required) */
+    ac_param_t *parameters;        /* Parameter definitions (NULL = no params) */
+    ac_tool_handler_t handler;     /* Execution handler (required) */
     void *user_data;               /* User context for handler */
-    struct agentc_tool *next;      /* Linked list */
-} agentc_tool_t;
+    const char *tools_group;       /* Tool group name (optional) */
+    struct ac_tool *next;          /* Linked list */
+} ac_tool_t;
 
 /*============================================================================
  * Tool Registry
  *============================================================================*/
 
-typedef struct agentc_tool_registry agentc_tool_registry_t;
+typedef struct ac_tools ac_tools_t;
 
 /**
  * @brief Create a tool registry
  *
  * @return New registry, NULL on error
  */
-agentc_tool_registry_t *agentc_tool_registry_create(void);
+ac_tools_t *ac_tools_create(void);
 
 /**
  * @brief Destroy a tool registry
  *
- * @param registry  Registry to destroy
+ * @param tools  Registry to destroy
  */
-void agentc_tool_registry_destroy(agentc_tool_registry_t *registry);
+void ac_tools_destroy(ac_tools_t *tools);
 
 /**
  * @brief Register a tool
  *
  * The tool definition is copied internally.
  *
- * @param registry  Tool registry
- * @param tool      Tool definition
+ * @param tools  Tool registry
+ * @param tool   Tool definition
  * @return AGENTC_OK on success
  */
-agentc_err_t agentc_tool_register(
-    agentc_tool_registry_t *registry,
-    const agentc_tool_t *tool
+agentc_err_t ac_tool_register(
+    ac_tools_t *tools,
+    const ac_tool_t *tool
 );
 
 /**
  * @brief Get tool by name
  *
- * @param registry  Tool registry
- * @param name      Tool name
+ * @param tools  Tool registry
+ * @param name   Tool name
  * @return Tool definition, NULL if not found
  */
-const agentc_tool_t *agentc_tool_get(
-    agentc_tool_registry_t *registry,
+const ac_tool_t *ac_tool_get(
+    ac_tools_t *tools,
     const char *name
 );
 
 /**
  * @brief Get all tools as linked list
  *
- * @param registry  Tool registry
+ * @param tools  Tool registry
  * @return Head of tool list
  */
-const agentc_tool_t *agentc_tool_list(agentc_tool_registry_t *registry);
+const ac_tool_t *ac_tool_list(ac_tools_t *tools);
 
 /**
  * @brief Get tool count
  *
- * @param registry  Tool registry
+ * @param tools  Tool registry
  * @return Number of registered tools
  */
-size_t agentc_tool_count(agentc_tool_registry_t *registry);
+size_t ac_tool_count(ac_tools_t *tools);
 
 /**
  * @brief Execute a tool call
  *
- * @param registry  Tool registry
- * @param call      Tool call from LLM
- * @param result    Output result (caller must free with agentc_tool_result_free)
+ * @param tools   Tool registry
+ * @param call    Tool call from LLM
+ * @param result  Output result (caller must free with ac_tool_result_free)
  * @return AGENTC_OK on success
  */
-agentc_err_t agentc_tool_execute(
-    agentc_tool_registry_t *registry,
-    const agentc_tool_call_t *call,
-    agentc_tool_result_t *result
+agentc_err_t ac_tool_execute(
+    ac_tools_t *tools,
+    const ac_tool_call_t *call,
+    ac_tool_result_t *result
 );
 
 /**
  * @brief Execute multiple tool calls
  *
- * @param registry  Tool registry
- * @param calls     Linked list of tool calls
- * @param results   Output linked list of results
+ * @param tools    Tool registry
+ * @param calls    Linked list of tool calls
+ * @param results  Output linked list of results
  * @return AGENTC_OK on success
  */
-agentc_err_t agentc_tool_execute_all(
-    agentc_tool_registry_t *registry,
-    const agentc_tool_call_t *calls,
-    agentc_tool_result_t **results
+agentc_err_t ac_tool_execute_all(
+    ac_tools_t *tools,
+    const ac_tool_call_t *calls,
+    ac_tool_result_t **results
 );
 
 /*============================================================================
@@ -201,9 +217,9 @@ agentc_err_t agentc_tool_execute_all(
  * @param required    1 = required, 0 = optional
  * @return New parameter, NULL on error
  */
-agentc_param_t *agentc_param_create(
+ac_param_t *ac_param_create(
     const char *name,
-    agentc_param_type_t type,
+    ac_param_type_t type,
     const char *description,
     int required
 );
@@ -214,36 +230,36 @@ agentc_param_t *agentc_param_create(
  * @param list   Pointer to list head
  * @param param  Parameter to append
  */
-void agentc_param_append(agentc_param_t **list, agentc_param_t *param);
+void ac_param_append(ac_param_t **list, ac_param_t *param);
 
 /**
  * @brief Free parameter list
  *
  * @param list  Parameter list to free
  */
-void agentc_param_free(agentc_param_t *list);
+void ac_param_free(ac_param_t *list);
 
 /**
  * @brief Free tool call
  *
  * @param call  Tool call to free (frees entire linked list)
  */
-void agentc_tool_call_free(agentc_tool_call_t *call);
+void ac_tool_call_free(ac_tool_call_t *call);
 
 /**
  * @brief Free tool result
  *
  * @param result  Tool result to free (frees entire linked list)
  */
-void agentc_tool_result_free(agentc_tool_result_t *result);
+void ac_tool_result_free(ac_tool_result_t *result);
 
 /**
  * @brief Generate OpenAI-compatible tools JSON array
  *
- * @param registry  Tool registry
+ * @param tools  Tool registry
  * @return JSON string (caller must free), NULL on error
  */
-char *agentc_tools_to_json(agentc_tool_registry_t *registry);
+char *ac_tools_to_json(ac_tools_t *tools);
 
 /**
  * @brief Get parameter type as JSON Schema string
@@ -251,7 +267,7 @@ char *agentc_tools_to_json(agentc_tool_registry_t *registry);
  * @param type  Parameter type
  * @return Type string ("string", "integer", etc.)
  */
-const char *agentc_param_type_to_string(agentc_param_type_t type);
+const char *ac_param_type_to_string(ac_param_type_t type);
 
 #ifdef __cplusplus
 }

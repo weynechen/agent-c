@@ -15,19 +15,14 @@
  * Internal Structures
  *============================================================================*/
 
-struct agentc_agent {
-    /* Configuration (copied) */
-    agentc_llm_client_t *llm;
-    agentc_tool_registry_t *tools;
-    char *name;
-    char *instructions;
+struct ac_agent {
+    /* Configuration */
+    const char *name;
+    ac_llm_t *llm;
+    ac_tools_t *tools;
+    ac_memory_t *memory;
     int max_iterations;
-    int max_tokens;
-    float temperature;
-    char *tool_choice;
-    int parallel_tool_calls;
-    int stream;
-    agentc_agent_hooks_t hooks;
+    uint32_t timeout_ms;
 
     /* Runtime state */
     char *tools_json;             /* Cached tools JSON */
@@ -38,483 +33,249 @@ struct agentc_agent {
  * Agent Create/Destroy
  *============================================================================*/
 
-agentc_err_t agentc_agent_create(
-    const agentc_agent_config_t *config,
-    agentc_agent_t **out
-) {
-    if (!config || !config->llm || !out) {
-        return AGENTC_ERR_INVALID_ARG;
+ac_agent_t *ac_agent_create(const ac_agent_params_t *params) {
+    if (!params || !params->llm) {
+        AC_LOG_ERROR("Invalid parameters: llm is required");
+        return NULL;
     }
 
-    agentc_agent_t *agent = AGENTC_CALLOC(1, sizeof(agentc_agent_t));
-    if (!agent) return AGENTC_ERR_NO_MEMORY;
+    ac_agent_t *agent = AGENTC_CALLOC(1, sizeof(ac_agent_t));
+    if (!agent) return NULL;
 
     /* Copy configuration */
-    agent->llm = config->llm;
-    agent->tools = config->tools;
-    agent->name = config->name ? AGENTC_STRDUP(config->name) : NULL;
-    agent->instructions = config->instructions ? AGENTC_STRDUP(config->instructions) : NULL;
-    agent->max_iterations = config->max_iterations > 0 ?
-        config->max_iterations : AGENTC_AGENT_DEFAULT_MAX_ITERATIONS;
-    agent->max_tokens = config->max_tokens;
-    agent->temperature = config->temperature > 0.0f ?
-        config->temperature : AGENTC_AGENT_DEFAULT_TEMPERATURE;
-    agent->tool_choice = AGENTC_STRDUP(
-        config->tool_choice ? config->tool_choice : AGENTC_AGENT_DEFAULT_TOOL_CHOICE
-    );
-    agent->parallel_tool_calls = config->parallel_tool_calls;
-    agent->stream = config->stream;
-    agent->hooks = config->hooks;
+    agent->name = params->name;
+    agent->llm = params->llm;
+    agent->tools = params->tools;
+    agent->memory = params->memory;
+    agent->max_iterations = params->max_iterations > 0 ?
+        params->max_iterations : AC_AGENT_DEFAULT_MAX_ITERATIONS;
+    agent->timeout_ms = params->timeout_ms;
 
     /* Generate tools JSON if tools are provided */
-    if (agent->tools && agentc_tool_count(agent->tools) > 0) {
-        agent->tools_json = agentc_tools_to_json(agent->tools);
+    if (agent->tools && ac_tool_count(agent->tools) > 0) {
+        agent->tools_json = ac_tools_to_json(agent->tools);
         if (!agent->tools_json) {
-            AGENTC_LOG_WARN("Failed to generate tools JSON");
+            AC_LOG_WARN("Failed to generate tools JSON");
         }
     }
 
     agent->current_iteration = 0;
 
-    AGENTC_LOG_INFO("Agent created: %s (max_iter=%d, temp=%.2f)",
+    AC_LOG_INFO("Agent created: %s (max_iter=%d)",
         agent->name ? agent->name : "unnamed",
-        agent->max_iterations,
-        agent->temperature);
+        agent->max_iterations);
 
-    *out = agent;
-    return AGENTC_OK;
+    return agent;
 }
 
-void agentc_agent_destroy(agentc_agent_t *agent) {
+void ac_agent_destroy(ac_agent_t *agent) {
     if (!agent) return;
 
-    AGENTC_FREE(agent->name);
-    AGENTC_FREE(agent->instructions);
-    AGENTC_FREE(agent->tool_choice);
     AGENTC_FREE(agent->tools_json);
     AGENTC_FREE(agent);
 }
 
-void agentc_agent_reset(agentc_agent_t *agent) {
+void ac_agent_reset(ac_agent_t *agent) {
     if (!agent) return;
     agent->current_iteration = 0;
 }
 
-/*============================================================================
- * Result Helpers
- *============================================================================*/
-
-void agentc_run_result_free(agentc_run_result_t *result) {
+void ac_agent_result_free(ac_agent_result_t *result) {
     if (!result) return;
-    AGENTC_FREE(result->final_output);
+    AGENTC_FREE(result->response);
     memset(result, 0, sizeof(*result));
 }
 
 /*============================================================================
- * Stream Context for Agent
+ * Agent Run (Synchronous)
  *============================================================================*/
 
-typedef struct {
-    agentc_agent_t *agent;
-    char *content_buffer;
-    size_t content_len;
-    size_t content_cap;
-    int aborted;
-} agent_stream_ctx_t;
-
-static int agent_stream_callback(const char *delta, size_t len, void *user_data) {
-    agent_stream_ctx_t *ctx = (agent_stream_ctx_t *)user_data;
-
-    /* Append to buffer */
-    if (ctx->content_len + len + 1 > ctx->content_cap) {
-        size_t new_cap = (ctx->content_cap + len + 1) * 2;
-        char *new_buf = AGENTC_REALLOC(ctx->content_buffer, new_cap);
-        if (!new_buf) return -1;
-        ctx->content_buffer = new_buf;
-        ctx->content_cap = new_cap;
-    }
-
-    memcpy(ctx->content_buffer + ctx->content_len, delta, len);
-    ctx->content_len += len;
-    ctx->content_buffer[ctx->content_len] = '\0';
-
-    /* Call user hook */
-    if (ctx->agent->hooks.on_content) {
-        int ret = ctx->agent->hooks.on_content(
-            delta, len, 0, ctx->agent->hooks.user_data
-        );
-        if (ret != 0) {
-            ctx->aborted = 1;
-            return ret;
-        }
-    }
-
-    return 0;
-}
-
-/*============================================================================
- * Core ReACT Loop
- *============================================================================*/
-
-static agentc_err_t run_react_loop(
-    agentc_agent_t *agent,
-    agentc_message_t **messages,
-    agentc_run_result_t *result
-) {
-    agentc_err_t err = AGENTC_OK;
-
-    result->status = AGENTC_RUN_SUCCESS;
-    result->final_output = NULL;
-    result->iterations = 0;
-    result->total_tokens = 0;
-    result->error_code = AGENTC_OK;
-
-    for (int iter = 0; iter < agent->max_iterations; iter++) {
-        agent->current_iteration = iter + 1;
-        result->iterations = iter + 1;
-
-        AGENTC_LOG_DEBUG("ReACT iteration %d/%d", iter + 1, agent->max_iterations);
-
-        /* Build chat request */
-        agentc_chat_request_t req = {
-            .messages = *messages,
-            .model = NULL,  /* Use client default */
-            .temperature = agent->temperature,
-            .max_tokens = agent->max_tokens,
-            .stream = agent->stream,
-            .tools_json = agent->tools_json,
-            .tool_choice = agent->tools_json ? agent->tool_choice : NULL,
-            .parallel_tool_calls = agent->parallel_tool_calls,
-        };
-
-        agentc_chat_response_t resp = {0};
-
-        if (agent->stream) {
-            /* Streaming mode */
-            agent_stream_ctx_t stream_ctx = {
-                .agent = agent,
-                .content_buffer = AGENTC_MALLOC(1024),
-                .content_len = 0,
-                .content_cap = 1024,
-                .aborted = 0,
-            };
-
-            if (!stream_ctx.content_buffer) {
-                result->status = AGENTC_RUN_ERROR;
-                result->error_code = AGENTC_ERR_NO_MEMORY;
-                return AGENTC_ERR_NO_MEMORY;
-            }
-            stream_ctx.content_buffer[0] = '\0';
-
-            err = agentc_llm_chat_stream(
-                agent->llm, &req,
-                agent_stream_callback, NULL,
-                &stream_ctx
-            );
-
-            if (stream_ctx.aborted) {
-                AGENTC_FREE(stream_ctx.content_buffer);
-                result->status = AGENTC_RUN_ABORTED;
-                return AGENTC_OK;
-            }
-
-            if (err != AGENTC_OK) {
-                AGENTC_FREE(stream_ctx.content_buffer);
-                result->status = AGENTC_RUN_ERROR;
-                result->error_code = err;
-                if (agent->hooks.on_error) {
-                    agent->hooks.on_error(err, "LLM chat stream failed", agent->hooks.user_data);
-                }
-                return err;
-            }
-
-            /* For streaming, we need to get the response separately */
-            /* Note: streaming with tool calls requires additional handling */
-            resp.content = stream_ctx.content_buffer;
-            resp.finish_reason = AGENTC_STRDUP("stop");  /* Assume stop for now */
-
-            /* Notify content complete */
-            if (agent->hooks.on_content && stream_ctx.content_len > 0) {
-                agent->hooks.on_content("", 0, 1, agent->hooks.user_data);
-            }
-        } else {
-            /* Blocking mode */
-            err = agentc_llm_chat(agent->llm, &req, &resp);
-
-            if (err != AGENTC_OK) {
-                result->status = AGENTC_RUN_ERROR;
-                result->error_code = err;
-                if (agent->hooks.on_error) {
-                    agent->hooks.on_error(err, "LLM chat failed", agent->hooks.user_data);
-                }
-                return err;
-            }
-
-            /* Notify content */
-            if (agent->hooks.on_content && resp.content) {
-                int ret = agent->hooks.on_content(
-                    resp.content, strlen(resp.content), 1, agent->hooks.user_data
-                );
-                if (ret != 0) {
-                    agentc_chat_response_free(&resp);
-                    result->status = AGENTC_RUN_ABORTED;
-                    return AGENTC_OK;
-                }
-            }
-        }
-
-        result->total_tokens += resp.total_tokens;
-
-        /* Check finish reason */
-        int has_tool_calls = resp.tool_calls != NULL;
-        int is_tool_calls_finish = resp.finish_reason &&
-            strcmp(resp.finish_reason, "tool_calls") == 0;
-
-        if (has_tool_calls || is_tool_calls_finish) {
-            /* Handle tool calls */
-            AGENTC_LOG_DEBUG("LLM requested tool calls");
-
-            if (!agent->tools) {
-                AGENTC_LOG_ERROR("Tool calls requested but no tools registered");
-                agentc_chat_response_free(&resp);
-                result->status = AGENTC_RUN_ERROR;
-                result->error_code = AGENTC_ERR_INVALID_ARG;
-                return AGENTC_ERR_INVALID_ARG;
-            }
-
-            /* Notify tool call hook */
-            if (agent->hooks.on_tool_call) {
-                int ret = agent->hooks.on_tool_call(resp.tool_calls, agent->hooks.user_data);
-                if (ret != 0) {
-                    agentc_chat_response_free(&resp);
-                    result->status = AGENTC_RUN_ABORTED;
-                    return AGENTC_OK;
-                }
-            }
-
-            /* Add assistant message with tool_calls to history */
-            agentc_message_t *assistant_msg = agentc_message_create_assistant_tool_calls(
-                resp.content, agentc_tool_call_clone(resp.tool_calls)
-            );
-            if (assistant_msg) {
-                agentc_message_append(messages, assistant_msg);
-            }
-
-            /* Execute all tool calls */
-            agentc_tool_result_t *results = NULL;
-            err = agentc_tool_execute_all(agent->tools, resp.tool_calls, &results);
-
-            if (err != AGENTC_OK) {
-                agentc_chat_response_free(&resp);
-                result->status = AGENTC_RUN_ERROR;
-                result->error_code = err;
-                return err;
-            }
-
-            /* Notify tool result hook */
-            if (agent->hooks.on_tool_result) {
-                int ret = agent->hooks.on_tool_result(results, agent->hooks.user_data);
-                if (ret != 0) {
-                    agentc_tool_result_free(results);
-                    agentc_chat_response_free(&resp);
-                    result->status = AGENTC_RUN_ABORTED;
-                    return AGENTC_OK;
-                }
-            }
-
-            /* Add tool result messages to history */
-            for (agentc_tool_result_t *r = results; r; r = r->next) {
-                agentc_message_t *tool_msg = agentc_message_create_tool_result(
-                    r->tool_call_id, r->output
-                );
-                if (tool_msg) {
-                    agentc_message_append(messages, tool_msg);
-                }
-            }
-
-            agentc_tool_result_free(results);
-            agentc_chat_response_free(&resp);
-
-            /* Continue loop */
-            continue;
-        }
-
-        /* No tool calls - we have a final response */
-        if (resp.content) {
-            result->final_output = AGENTC_STRDUP(resp.content);
-        }
-
-        agentc_chat_response_free(&resp);
-
-        /* Success! */
-        result->status = AGENTC_RUN_SUCCESS;
-
-        /* Notify complete */
-        if (agent->hooks.on_complete) {
-            agent->hooks.on_complete(result, agent->hooks.user_data);
-        }
-
-        return AGENTC_OK;
-    }
-
-    /* Hit max iterations */
-    AGENTC_LOG_WARN("Agent hit max iterations (%d)", agent->max_iterations);
-    result->status = AGENTC_RUN_MAX_ITERATIONS;
-
-    if (agent->hooks.on_complete) {
-        agent->hooks.on_complete(result, agent->hooks.user_data);
-    }
-
-    return AGENTC_OK;
-}
-
-/*============================================================================
- * Public API
- *============================================================================*/
-
-agentc_err_t agentc_agent_run(
-    agentc_agent_t *agent,
+agentc_err_t ac_agent_run_sync(
+    ac_agent_t *agent,
     const char *input,
-    agentc_run_result_t *result
+    ac_agent_result_t *result
 ) {
     if (!agent || !input || !result) {
         return AGENTC_ERR_INVALID_ARG;
     }
 
     memset(result, 0, sizeof(*result));
+    result->status = AC_RUN_SUCCESS;
+    
+    /* Build message history */
+    ac_message_t *messages = NULL;
 
-    /* Notify start */
-    if (agent->hooks.on_start) {
-        int ret = agent->hooks.on_start(input, agent->hooks.user_data);
-        if (ret != 0) {
-            result->status = AGENTC_RUN_ABORTED;
-            return AGENTC_OK;
+    /* Add messages from memory if available */
+    if (agent->memory) {
+        const ac_message_t *mem_msgs = ac_memory_get_messages(agent->memory);
+        for (const ac_message_t *m = mem_msgs; m; m = m->next) {
+            ac_message_t *copy = ac_message_create(m->role, m->content);
+            if (copy) {
+                ac_message_append(&messages, copy);
+            }
         }
     }
-
-    /* Build message list */
-    agentc_message_t *messages = NULL;
-
-    /* Add system message if instructions provided */
-    if (agent->instructions) {
-        agentc_message_t *sys_msg = agentc_message_create(
-            AGENTC_ROLE_SYSTEM, agent->instructions
-        );
-        if (sys_msg) {
-            agentc_message_append(&messages, sys_msg);
-        }
-    }
-
-    /* Add user message */
-    agentc_message_t *user_msg = agentc_message_create(AGENTC_ROLE_USER, input);
+    
+    /* Add user input */
+    ac_message_t *user_msg = ac_message_create(AC_ROLE_USER, input);
     if (!user_msg) {
-        agentc_message_free(messages);
-        result->status = AGENTC_RUN_ERROR;
-        result->error_code = AGENTC_ERR_NO_MEMORY;
+        ac_message_free(messages);
         return AGENTC_ERR_NO_MEMORY;
-    }
-    agentc_message_append(&messages, user_msg);
-
-    /* Run ReACT loop */
-    agentc_err_t err = run_react_loop(agent, &messages, result);
-
-    /* Cleanup messages */
-    agentc_message_free(messages);
-
-    return err;
-}
-
-agentc_err_t agentc_agent_run_with_history(
-    agentc_agent_t *agent,
-    agentc_message_t **messages,
-    agentc_run_result_t *result
-) {
-    if (!agent || !messages || !result) {
-        return AGENTC_ERR_INVALID_ARG;
-    }
-
-    memset(result, 0, sizeof(*result));
-
-    /* Add system message at the beginning if not present and instructions provided */
-    if (agent->instructions) {
-        agentc_message_t *first = *messages;
-        if (!first || first->role != AGENTC_ROLE_SYSTEM) {
-            agentc_message_t *sys_msg = agentc_message_create(
-                AGENTC_ROLE_SYSTEM, agent->instructions
-            );
-            if (sys_msg) {
-                sys_msg->next = *messages;
-                *messages = sys_msg;
-            }
         }
+    ac_message_append(&messages, user_msg);
+    
+    /* Add to memory */
+    if (agent->memory) {
+        ac_memory_add(agent->memory, user_msg);
     }
 
-    /* Notify start with last user message */
-    if (agent->hooks.on_start) {
-        /* Find last user message */
-        const char *last_input = "";
-        for (agentc_message_t *m = *messages; m; m = m->next) {
-            if (m->role == AGENTC_ROLE_USER && m->content) {
-                last_input = m->content;
-            }
+    /* ReACT loop */
+    agent->current_iteration = 0;
+    agentc_err_t err = AGENTC_OK;
+
+    while (agent->current_iteration < agent->max_iterations) {
+        agent->current_iteration++;
+
+        AC_LOG_DEBUG("ReACT iteration %d/%d", 
+                         agent->current_iteration, agent->max_iterations);
+        
+        /* Call LLM */
+        ac_chat_response_t resp = {0};
+        err = ac_llm_chat(agent->llm, messages, agent->tools_json, &resp);
+
+            if (err != AGENTC_OK) {
+            AC_LOG_ERROR("LLM call failed: %d", err);
+            result->status = AC_RUN_ERROR;
+                result->error_code = err;
+            ac_message_free(messages);
+                return err;
         }
 
-        int ret = agent->hooks.on_start(last_input, agent->hooks.user_data);
-        if (ret != 0) {
-            result->status = AGENTC_RUN_ABORTED;
+        result->total_tokens += resp.total_tokens;
+
+        /* Check finish reason */
+        if (resp.finish_reason && strcmp(resp.finish_reason, "stop") == 0) {
+            /* Normal completion */
+            result->response = resp.content ? AGENTC_STRDUP(resp.content) : NULL;
+            resp.content = NULL;
+            
+            /* Add assistant response to memory */
+            if (agent->memory && result->response) {
+                ac_message_t *assist_msg = ac_message_create(AC_ROLE_ASSISTANT, result->response);
+                if (assist_msg) {
+                    ac_memory_add(agent->memory, assist_msg);
+                    ac_message_free(assist_msg);
+                }
+            }
+            
+            ac_chat_response_free(&resp);
+            ac_message_free(messages);
+            result->iterations = agent->current_iteration;
             return AGENTC_OK;
+            }
+
+        /* Check for tool calls */
+        if (resp.tool_calls) {
+            AC_LOG_DEBUG("LLM requested %d tool call(s)", 
+                           resp.tool_calls->next ? 2 : 1);
+
+            /* Add assistant message with tool calls to history */
+            ac_message_t *assist_msg = ac_message_create_assistant_tool_calls(
+                resp.content, resp.tool_calls
+            );
+            resp.tool_calls = NULL;  /* Transfer ownership */
+            resp.content = NULL;
+            
+            if (!assist_msg) {
+                ac_chat_response_free(&resp);
+                ac_message_free(messages);
+                result->status = AC_RUN_ERROR;
+                result->error_code = AGENTC_ERR_NO_MEMORY;
+                return AGENTC_ERR_NO_MEMORY;
+            }
+            
+            ac_message_append(&messages, assist_msg);
+            
+            /* Add to memory */
+            if (agent->memory) {
+                ac_memory_add(agent->memory, assist_msg);
+            }
+
+            /* Execute tools */
+            if (agent->tools) {
+                ac_tool_result_t *tool_results = NULL;
+                err = ac_tool_execute_all(agent->tools, assist_msg->tool_calls, &tool_results);
+
+            if (err != AGENTC_OK) {
+                    AC_LOG_ERROR("Tool execution failed: %d", err);
+                    ac_chat_response_free(&resp);
+                    ac_message_free(messages);
+                    result->status = AC_RUN_ERROR;
+                result->error_code = err;
+                return err;
+            }
+
+                /* Add tool results to messages */
+                for (ac_tool_result_t *tr = tool_results; tr; tr = tr->next) {
+                    ac_message_t *tool_msg = ac_message_create_tool_result(
+                        tr->tool_call_id, tr->output
+                );
+                if (tool_msg) {
+                        ac_message_append(&messages, tool_msg);
+                        
+                        /* Add to memory */
+                        if (agent->memory) {
+                            ac_memory_add(agent->memory, tool_msg);
+                        }
+                    }
+                }
+                
+                ac_tool_result_free(tool_results);
+            }
+            
+            ac_chat_response_free(&resp);
+            continue;  /* Next iteration */
         }
+
+        /* No content and no tool calls - unexpected */
+        AC_LOG_WARN("LLM returned no content and no tool calls");
+        ac_chat_response_free(&resp);
+        break;
     }
 
-    /* Run ReACT loop */
-    return run_react_loop(agent, messages, result);
+    /* Hit max iterations */
+    ac_message_free(messages);
+    result->status = AC_RUN_MAX_ITERATIONS;
+    result->iterations = agent->current_iteration;
+    result->response = AGENTC_STRDUP("Maximum iterations reached without completion");
+    
+    AC_LOG_WARN("Agent hit max iterations: %d", agent->max_iterations);
+    return AGENTC_OK;
 }
 
 /*============================================================================
- * Convenience Function
+ * Agent Run (Streaming) - NOT IMPLEMENTED YET
  *============================================================================*/
 
-agentc_err_t agentc_agent_quick_run(
-    agentc_llm_client_t *llm,
-    agentc_tool_registry_t *tools,
-    const char *system,
-    const char *user_input,
-    char **output
-) {
-    if (!llm || !user_input || !output) {
-        return AGENTC_ERR_INVALID_ARG;
-    }
+ac_stream_t *ac_agent_run(ac_agent_t *agent, const char *input) {
+    (void)agent;
+    (void)input;
+    
+    AC_LOG_ERROR("Streaming mode not implemented yet");
+    return NULL;
+}
 
-    agentc_agent_config_t config = {
-        .llm = llm,
-        .tools = tools,
-        .instructions = system,
-        .max_iterations = AGENTC_AGENT_DEFAULT_MAX_ITERATIONS,
-        .temperature = AGENTC_AGENT_DEFAULT_TEMPERATURE,
-    };
+int ac_stream_is_running(ac_stream_t *stream) {
+    (void)stream;
+    return 0;
+}
 
-    agentc_agent_t *agent = NULL;
-    agentc_err_t err = agentc_agent_create(&config, &agent);
-    if (err != AGENTC_OK) {
-        return err;
-    }
-
-    agentc_run_result_t result = {0};
-    err = agentc_agent_run(agent, user_input, &result);
-
-    if (err == AGENTC_OK && result.status == AGENTC_RUN_SUCCESS) {
-        *output = result.final_output;
-        result.final_output = NULL;  /* Transfer ownership */
-    } else {
-        *output = NULL;
-        if (err == AGENTC_OK) {
-            /* Run completed but with non-success status */
-            err = result.error_code != AGENTC_OK ? result.error_code : AGENTC_ERR_HTTP;
+ac_stream_result_t *ac_stream_next(ac_stream_t *stream, int timeout_ms) {
+    (void)stream;
+    (void)timeout_ms;
+    return NULL;
         }
-    }
 
-    agentc_run_result_free(&result);
-    agentc_agent_destroy(agent);
-
-    return err;
+void ac_stream_destroy(ac_stream_t *stream) {
+    (void)stream;
 }

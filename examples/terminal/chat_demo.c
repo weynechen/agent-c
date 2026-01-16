@@ -89,8 +89,8 @@ int main(int argc, char *argv[]) {
     /* Get API key from environment */
     const char *api_key = getenv("OPENAI_API_KEY");
     if (!api_key || strlen(api_key) == 0) {
-        fprintf(stderr, "Error: OPENAI_API_KEY not set\n");
-        fprintf(stderr, "Create a .env file with: OPENAI_API_KEY=sk-xxx\n");
+        AC_LOG_ERROR( "Error: OPENAI_API_KEY not set\n");
+        AC_LOG_ERROR( "Create a .env file with: OPENAI_API_KEY=sk-xxx\n");
         return 1;
     }
     
@@ -104,7 +104,7 @@ int main(int argc, char *argv[]) {
     /* Initialize AgentC */
     agentc_err_t err = agentc_init();
     if (err != AGENTC_OK) {
-        fprintf(stderr, "Failed to initialize AgentC: %s\n", agentc_strerror(err));
+        AC_LOG_ERROR( "Failed to initialize AgentC: %s\n", agentc_strerror(err));
         return 1;
     }
     
@@ -119,7 +119,7 @@ int main(int argc, char *argv[]) {
     agentc_llm_client_t *llm = NULL;
     err = agentc_llm_create(&config, &llm);
     if (err != AGENTC_OK) {
-        fprintf(stderr, "Failed to create LLM client: %s\n", agentc_strerror(err));
+        AC_LOG_ERROR( "Failed to create LLM client: %s\n", agentc_strerror(err));
         agentc_cleanup();
         return 1;
     }

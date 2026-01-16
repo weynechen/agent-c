@@ -113,7 +113,7 @@ static void demo_streaming(void) {
     
     md_stream_t* stream = md_stream_new();
     if (!stream) {
-        fprintf(stderr, "Failed to create stream\n");
+        AC_LOG_ERROR( "Failed to create stream\n");
         return;
     }
     
@@ -181,7 +181,7 @@ int main(int argc, char* argv[]) {
     if (file_path) {
         FILE* f = fopen(file_path, "r");
         if (!f) {
-            fprintf(stderr, "Error: Cannot open file '%s'\n", file_path);
+            AC_LOG_ERROR( "Error: Cannot open file '%s'\n", file_path);
             return 1;
         }
         
@@ -193,7 +193,7 @@ int main(int argc, char* argv[]) {
         char* content = (char*)malloc(size + 1);
         if (!content) {
             fclose(f);
-            fprintf(stderr, "Error: Out of memory\n");
+            AC_LOG_ERROR( "Error: Out of memory\n");
             return 1;
         }
         

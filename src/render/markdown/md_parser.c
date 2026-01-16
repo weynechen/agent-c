@@ -43,7 +43,7 @@ static pcre2_code* compile_regex(const char* pattern) {
     if (re == NULL) {
         PCRE2_UCHAR buffer[256];
         pcre2_get_error_message(errornumber, buffer, sizeof(buffer));
-        fprintf(stderr, "PCRE2 compile error at offset %d: %s\n", (int)erroroffset, buffer);
+        AC_LOG_ERROR( "PCRE2 compile error at offset %d: %s\n", (int)erroroffset, buffer);
     }
     return re;
 }

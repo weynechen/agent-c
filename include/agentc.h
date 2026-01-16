@@ -8,9 +8,9 @@
  * #include <agentc.h>
  *
  * int main(void) {
- *     agentc_init();
+ *     ac_init();
  *     // ... use AgentC APIs ...
- *     agentc_cleanup();
+ *     ac_cleanup();
  *     return 0;
  * }
  * @endcode
@@ -23,6 +23,7 @@
 #include "agentc/http_client.h"
 #include "agentc/llm.h"
 #include "agentc/tool.h"
+#include "agentc/memory.h"
 #include "agentc/agent.h"
 
 #ifdef __cplusplus
@@ -50,21 +51,21 @@ extern "C" {
  *
  * @return AGENTC_OK on success, error code otherwise
  */
-agentc_err_t agentc_init(void);
+agentc_err_t ac_init(void);
 
 /**
  * @brief Cleanup AgentC runtime
  *
  * Call before program exit to release resources.
  */
-void agentc_cleanup(void);
+void ac_cleanup(void);
 
 /**
  * @brief Get AgentC version string
  *
  * @return Version string (e.g., "0.1.0")
  */
-const char *agentc_version(void);
+const char *ac_version(void);
 
 /**
  * @brief Get error message for error code
@@ -72,7 +73,7 @@ const char *agentc_version(void);
  * @param err  Error code
  * @return Human-readable error message
  */
-const char *agentc_strerror(agentc_err_t err);
+const char *ac_strerror(agentc_err_t err);
 
 #ifdef __cplusplus
 }

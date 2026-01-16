@@ -3,7 +3,7 @@
  * @brief AgentC ReACT Agent
  *
  * Implements a ReACT (Reasoning + Acting) agent loop.
- * Similar to OpenAI Agents SDK design.
+ * Supports both synchronous and streaming execution.
  */
 
 #ifndef AGENTC_AGENT_H
@@ -11,6 +11,7 @@
 
 #include "llm.h"
 #include "tool.h"
+#include "memory.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -21,207 +22,232 @@ extern "C" {
  *============================================================================*/
 
 typedef enum {
-    AGENTC_RUN_SUCCESS,           /* Completed successfully */
-    AGENTC_RUN_MAX_ITERATIONS,    /* Hit max iterations limit */
-    AGENTC_RUN_ERROR,             /* Error occurred */
-    AGENTC_RUN_ABORTED,           /* Aborted by user callback */
-} agentc_run_status_t;
+    AC_RUN_SUCCESS,           /* Completed successfully */
+    AC_RUN_MAX_ITERATIONS,    /* Hit max iterations limit */
+    AC_RUN_ERROR,             /* Error occurred */
+    AC_RUN_ABORTED,           /* Aborted by user callback */
+} ac_run_status_t;
 
 typedef struct {
-    agentc_run_status_t status;   /* Run status */
-    char *final_output;           /* Final response (caller must free) */
-    int iterations;               /* Number of ReACT iterations */
-    int total_tokens;             /* Total tokens used */
-    agentc_err_t error_code;      /* Error code if status == ERROR */
-} agentc_run_result_t;
+    ac_run_status_t status;   /* Run status */
+    char *response;           /* Final response (caller must free) */
+    int iterations;           /* Number of ReACT iterations */
+    int total_tokens;         /* Total tokens used */
+    agentc_err_t error_code;  /* Error code if status == ERROR */
+} ac_agent_result_t;
 
 /*============================================================================
- * Agent Hooks (Callbacks for observability)
- *============================================================================*/
-
-typedef struct agentc_agent_hooks {
-    /**
-     * Called when agent starts processing
-     * @return 0 to continue, non-zero to abort
-     */
-    int (*on_start)(const char *user_input, void *user_data);
-
-    /**
-     * Called when LLM generates text content (streaming or complete)
-     * @param content     Content chunk
-     * @param len         Content length
-     * @param is_complete 1 if this is the final chunk
-     * @return 0 to continue, non-zero to abort
-     */
-    int (*on_content)(const char *content, size_t len, int is_complete, void *user_data);
-
-    /**
-     * Called when LLM requests tool calls
-     * @param calls  Linked list of tool calls
-     * @return 0 to continue, non-zero to abort
-     */
-    int (*on_tool_call)(const agentc_tool_call_t *calls, void *user_data);
-
-    /**
-     * Called when tool execution completes
-     * @param results  Linked list of tool results
-     * @return 0 to continue, non-zero to abort
-     */
-    int (*on_tool_result)(const agentc_tool_result_t *results, void *user_data);
-
-    /**
-     * Called when agent completes
-     * @param result  Final run result
-     */
-    void (*on_complete)(const agentc_run_result_t *result, void *user_data);
-
-    /**
-     * Called on error
-     * @param error    Error code
-     * @param message  Error message
-     */
-    void (*on_error)(agentc_err_t error, const char *message, void *user_data);
-
-    void *user_data;              /* User context passed to all callbacks */
-} agentc_agent_hooks_t;
-
-/*============================================================================
- * Agent Configuration
+ * Agent Parameters
  *============================================================================*/
 
 typedef struct {
     /* Required */
-    agentc_llm_client_t *llm;          /* LLM client (required) */
-    agentc_tool_registry_t *tools;     /* Tool registry (optional) */
-
-    /* System prompt */
     const char *name;                  /* Agent name (optional) */
-    const char *instructions;          /* System instructions (optional) */
+    ac_llm_t *llm;                     /* LLM client (required) */
+    ac_tools_t *tools;                 /* Tool registry (optional) */
+    ac_memory_t *memory;               /* Memory manager (optional) */
 
     /* Execution limits */
     int max_iterations;                /* Max ReACT loops (default: 10) */
-    int max_tokens;                    /* Max tokens per response (0 = no limit) */
-    float temperature;                 /* Temperature (default: 0.7) */
-
-    /* Tool behavior */
-    const char *tool_choice;           /* "auto", "none", "required" (default: "auto") */
-    int parallel_tool_calls;           /* Allow parallel tool calls (default: 1) */
-
-    /* Streaming */
-    int stream;                        /* Enable streaming (default: 0) */
-
-    /* Hooks */
-    agentc_agent_hooks_t hooks;        /* Event callbacks */
-} agentc_agent_config_t;
+    uint32_t timeout_ms;               /* Timeout in milliseconds (default: 0 = no timeout) */
+} ac_agent_params_t;
 
 /*============================================================================
  * Agent Handle
  *============================================================================*/
 
-typedef struct agentc_agent agentc_agent_t;
+typedef struct ac_agent ac_agent_t;
 
 /*============================================================================
- * Agent API
+ * API Functions - Synchronous
  *============================================================================*/
 
 /**
  * @brief Create an agent
  *
- * @param config  Agent configuration
- * @param out     Output agent handle
- * @return AGENTC_OK on success
+ * Example:
+ * @code
+ * ac_llm_t *llm = ac_llm_create(&(ac_llm_params_t){
+ *     .model = "deepseek/deepseek-chat",
+ *     .api_key = getenv("DEEPSEEK_API_KEY"),
+ *     .instructions = "You are a helpful assistant"
+ * });
+ * 
+ * ac_memory_t *memory = ac_memory_create(&(ac_memory_config_t){
+ *     .session_id = "session-123"
+ * });
+ * 
+ * ac_agent_t *agent = ac_agent_create(&(ac_agent_params_t){
+ *     .llm = llm,
+ *     .tools = tools,
+ *     .memory = memory,
+ *     .max_iterations = 10
+ * });
+ * @endcode
+ *
+ * @param params  Agent parameters
+ * @return Agent handle, NULL on error
  */
-agentc_err_t agentc_agent_create(
-    const agentc_agent_config_t *config,
-    agentc_agent_t **out
-);
+ac_agent_t *ac_agent_create(const ac_agent_params_t *params);
 
 /**
  * @brief Destroy an agent
  *
  * @param agent  Agent handle
  */
-void agentc_agent_destroy(agentc_agent_t *agent);
+void ac_agent_destroy(ac_agent_t *agent);
 
 /**
- * @brief Run agent with user input (blocking)
+ * @brief Run agent with user input (blocking, synchronous)
  *
  * Executes the ReACT loop until completion or max iterations.
  *
+ * Example:
+ * @code
+ * ac_agent_result_t result;
+ * ac_agent_run_sync(agent, "What's the weather in Beijing?", &result);
+ * printf("%s\n", result.response);
+ * ac_agent_result_free(&result);
+ * @endcode
+ *
  * @param agent   Agent handle
  * @param input   User input message
- * @param result  Output result (caller must free final_output)
+ * @param result  Output result (caller must free with ac_agent_result_free)
  * @return AGENTC_OK on success
  */
-agentc_err_t agentc_agent_run(
-    agentc_agent_t *agent,
+agentc_err_t ac_agent_run_sync(
+    ac_agent_t *agent,
     const char *input,
-    agentc_run_result_t *result
-);
-
-/**
- * @brief Run agent with message history
- *
- * Allows continuing a conversation with existing history.
- *
- * @param agent     Agent handle
- * @param messages  Message history (will be modified to add new messages)
- * @param result    Output result
- * @return AGENTC_OK on success
- */
-agentc_err_t agentc_agent_run_with_history(
-    agentc_agent_t *agent,
-    agentc_message_t **messages,
-    agentc_run_result_t *result
+    ac_agent_result_t *result
 );
 
 /**
  * @brief Reset agent state
  *
  * Clears internal state for a fresh run.
+ * Note: Does not clear memory if memory manager is used.
  *
  * @param agent  Agent handle
  */
-void agentc_agent_reset(agentc_agent_t *agent);
+void ac_agent_reset(ac_agent_t *agent);
 
 /**
- * @brief Free run result resources
+ * @brief Free agent result resources
  *
  * @param result  Result to free
  */
-void agentc_run_result_free(agentc_run_result_t *result);
+void ac_agent_result_free(ac_agent_result_t *result);
 
 /*============================================================================
- * Convenience: Simple one-shot run
+ * API Functions - Streaming
  *============================================================================*/
 
 /**
- * @brief Quick agent run without creating persistent agent
- *
- * Creates a temporary agent, runs it once, and destroys it.
- *
- * @param llm         LLM client
- * @param tools       Tool registry (optional)
- * @param system      System prompt (optional)
- * @param user_input  User input
- * @param output      Output response (caller must free)
- * @return AGENTC_OK on success
+ * Stream result type
  */
-agentc_err_t agentc_agent_quick_run(
-    agentc_llm_client_t *llm,
-    agentc_tool_registry_t *tools,
-    const char *system,
-    const char *user_input,
-    char **output
-);
+typedef enum {
+    AC_STREAM_CONTENT,        /* Content chunk */
+    AC_STREAM_TOOL_CALL,      /* Tool call */
+    AC_STREAM_TOOL_RESULT,    /* Tool result */
+    AC_STREAM_DONE,           /* Stream complete */
+    AC_STREAM_ERROR,          /* Error occurred */
+} ac_stream_type_t;
+
+/**
+ * Stream result
+ */
+typedef struct {
+    ac_stream_type_t type;    /* Result type */
+    
+    /* For CONTENT */
+    const char *content;      /* Content chunk (not owned, do not free) */
+    size_t content_len;       /* Content length */
+    
+    /* For TOOL_CALL */
+    const ac_tool_call_t *tool_call;  /* Tool call (not owned) */
+    
+    /* For TOOL_RESULT */
+    const ac_tool_result_t *tool_result;  /* Tool result (not owned) */
+    
+    /* For DONE */
+    const char *final_response;  /* Final response (not owned) */
+    int total_tokens;            /* Total tokens used */
+    
+    /* For ERROR */
+    agentc_err_t error_code;  /* Error code */
+    const char *error_msg;    /* Error message (not owned) */
+} ac_stream_result_t;
+
+/**
+ * Stream handle
+ */
+typedef struct ac_stream ac_stream_t;
+
+/**
+ * @brief Run agent with streaming output
+ *
+ * Creates a stream that can be polled for results.
+ *
+ * Example:
+ * @code
+ * ac_stream_t *stream = ac_agent_run(agent, "What's the weather in Beijing?");
+ * 
+ * while (ac_stream_is_running(stream)) {
+ *     ac_stream_result_t *result = ac_stream_next(stream, 1000); // 1s timeout
+ *     if (result) {
+ *         switch (result->type) {
+ *             case AC_STREAM_CONTENT:
+ *                 printf("%.*s", (int)result->content_len, result->content);
+ *                 break;
+ *             case AC_STREAM_DONE:
+ *                 printf("\nDone!\n");
+ *                 break;
+ *             // ... handle other types
+ *         }
+ *     }
+ * }
+ * 
+ * ac_stream_destroy(stream);
+ * @endcode
+ *
+ * @param agent  Agent handle
+ * @param input  User input message
+ * @return Stream handle, NULL on error
+ */
+ac_stream_t *ac_agent_run(ac_agent_t *agent, const char *input);
+
+/**
+ * @brief Check if stream is running
+ *
+ * @param stream  Stream handle
+ * @return 1 if running, 0 if complete or error
+ */
+int ac_stream_is_running(ac_stream_t *stream);
+
+/**
+ * @brief Get next stream result (blocking with timeout)
+ *
+ * @param stream      Stream handle
+ * @param timeout_ms  Timeout in milliseconds (0 = non-blocking, -1 = infinite)
+ * @return Stream result, NULL if timeout or stream ended
+ */
+ac_stream_result_t *ac_stream_next(ac_stream_t *stream, int timeout_ms);
+
+/**
+ * @brief Destroy stream
+ *
+ * Automatically aborts if still running.
+ *
+ * @param stream  Stream handle
+ */
+void ac_stream_destroy(ac_stream_t *stream);
 
 /*============================================================================
  * Default Values
  *============================================================================*/
 
-#define AGENTC_AGENT_DEFAULT_MAX_ITERATIONS  10
-#define AGENTC_AGENT_DEFAULT_TEMPERATURE     0.7f
-#define AGENTC_AGENT_DEFAULT_TOOL_CHOICE     "auto"
+#define AC_AGENT_DEFAULT_MAX_ITERATIONS  10
+#define AC_AGENT_DEFAULT_TIMEOUT_MS      0  /* No timeout */
 
 #ifdef __cplusplus
 }

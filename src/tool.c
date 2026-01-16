@@ -13,24 +13,24 @@
  * Internal Structures
  *============================================================================*/
 
-struct agentc_tool_registry {
-    agentc_tool_t *tools;         /* Linked list of tools */
-    size_t count;                 /* Number of tools */
+struct ac_tools {
+    ac_tool_t *tools;         /* Linked list of tools */
+    size_t count;             /* Number of tools */
 };
 
 /*============================================================================
  * Parameter Type Helpers
  *============================================================================*/
 
-const char *agentc_param_type_to_string(agentc_param_type_t type) {
+const char *ac_param_type_to_string(ac_param_type_t type) {
     switch (type) {
-        case AGENTC_PARAM_STRING:  return "string";
-        case AGENTC_PARAM_INTEGER: return "integer";
-        case AGENTC_PARAM_NUMBER:  return "number";
-        case AGENTC_PARAM_BOOLEAN: return "boolean";
-        case AGENTC_PARAM_OBJECT:  return "object";
-        case AGENTC_PARAM_ARRAY:   return "array";
-        default:                   return "string";
+        case AC_PARAM_STRING:  return "string";
+        case AC_PARAM_INTEGER: return "integer";
+        case AC_PARAM_NUMBER:  return "number";
+        case AC_PARAM_BOOLEAN: return "boolean";
+        case AC_PARAM_OBJECT:  return "object";
+        case AC_PARAM_ARRAY:   return "array";
+        default:               return "string";
     }
 }
 
@@ -38,15 +38,15 @@ const char *agentc_param_type_to_string(agentc_param_type_t type) {
  * Parameter Helpers
  *============================================================================*/
 
-agentc_param_t *agentc_param_create(
+ac_param_t *ac_param_create(
     const char *name,
-    agentc_param_type_t type,
+    ac_param_type_t type,
     const char *description,
     int required
 ) {
     if (!name) return NULL;
 
-    agentc_param_t *param = AGENTC_CALLOC(1, sizeof(agentc_param_t));
+    ac_param_t *param = AGENTC_CALLOC(1, sizeof(ac_param_t));
     if (!param) return NULL;
 
     param->name = AGENTC_STRDUP(name);
@@ -64,7 +64,7 @@ agentc_param_t *agentc_param_create(
     return param;
 }
 
-void agentc_param_append(agentc_param_t **list, agentc_param_t *param) {
+void ac_param_append(ac_param_t **list, ac_param_t *param) {
     if (!list || !param) return;
 
     if (!*list) {
@@ -72,16 +72,16 @@ void agentc_param_append(agentc_param_t **list, agentc_param_t *param) {
         return;
     }
 
-    agentc_param_t *tail = *list;
+    ac_param_t *tail = *list;
     while (tail->next) {
         tail = tail->next;
     }
     tail->next = param;
 }
 
-void agentc_param_free(agentc_param_t *list) {
+void ac_param_free(ac_param_t *list) {
     while (list) {
-        agentc_param_t *next = list->next;
+        ac_param_t *next = list->next;
         AGENTC_FREE((void *)list->name);
         AGENTC_FREE((void *)list->description);
         AGENTC_FREE((void *)list->enum_values);
@@ -91,16 +91,16 @@ void agentc_param_free(agentc_param_t *list) {
 }
 
 /* Deep copy a parameter list */
-static agentc_param_t *param_clone(const agentc_param_t *src) {
-    agentc_param_t *head = NULL;
-    agentc_param_t *tail = NULL;
+static ac_param_t *param_clone(const ac_param_t *src) {
+    ac_param_t *head = NULL;
+    ac_param_t *tail = NULL;
 
     while (src) {
-        agentc_param_t *copy = agentc_param_create(
+        ac_param_t *copy = ac_param_create(
             src->name, src->type, src->description, src->required
         );
         if (!copy) {
-            agentc_param_free(head);
+            ac_param_free(head);
             return NULL;
         }
 
@@ -126,9 +126,9 @@ static agentc_param_t *param_clone(const agentc_param_t *src) {
  * Tool Call Helpers
  *============================================================================*/
 
-void agentc_tool_call_free(agentc_tool_call_t *call) {
+void ac_tool_call_free(ac_tool_call_t *call) {
     while (call) {
-        agentc_tool_call_t *next = call->next;
+        ac_tool_call_t *next = call->next;
         AGENTC_FREE(call->id);
         AGENTC_FREE(call->name);
         AGENTC_FREE(call->arguments);
@@ -137,43 +137,13 @@ void agentc_tool_call_free(agentc_tool_call_t *call) {
     }
 }
 
-agentc_tool_call_t *agentc_tool_call_clone(const agentc_tool_call_t *calls) {
-    agentc_tool_call_t *head = NULL;
-    agentc_tool_call_t *tail = NULL;
-
-    while (calls) {
-        agentc_tool_call_t *copy = AGENTC_CALLOC(1, sizeof(agentc_tool_call_t));
-        if (!copy) {
-            agentc_tool_call_free(head);
-            return NULL;
-        }
-
-        copy->id = calls->id ? AGENTC_STRDUP(calls->id) : NULL;
-        copy->name = calls->name ? AGENTC_STRDUP(calls->name) : NULL;
-        copy->arguments = calls->arguments ? AGENTC_STRDUP(calls->arguments) : NULL;
-        copy->next = NULL;
-
-        if (!head) {
-            head = copy;
-            tail = copy;
-        } else {
-            tail->next = copy;
-            tail = copy;
-        }
-
-        calls = calls->next;
-    }
-
-    return head;
-}
-
 /*============================================================================
  * Tool Result Helpers
  *============================================================================*/
 
-void agentc_tool_result_free(agentc_tool_result_t *result) {
+void ac_tool_result_free(ac_tool_result_t *result) {
     while (result) {
-        agentc_tool_result_t *next = result->next;
+        ac_tool_result_t *next = result->next;
         AGENTC_FREE(result->tool_call_id);
         AGENTC_FREE(result->output);
         AGENTC_FREE(result);
@@ -185,50 +155,51 @@ void agentc_tool_result_free(agentc_tool_result_t *result) {
  * Tool Registry
  *============================================================================*/
 
-agentc_tool_registry_t *agentc_tool_registry_create(void) {
-    agentc_tool_registry_t *registry = AGENTC_CALLOC(1, sizeof(agentc_tool_registry_t));
-    if (!registry) return NULL;
+ac_tools_t *ac_tools_create(void) {
+    ac_tools_t *tools = AGENTC_CALLOC(1, sizeof(ac_tools_t));
+    if (!tools) return NULL;
 
-    registry->tools = NULL;
-    registry->count = 0;
+    tools->tools = NULL;
+    tools->count = 0;
 
-    return registry;
+    return tools;
 }
 
-static void tool_free(agentc_tool_t *tool) {
+static void tool_free(ac_tool_t *tool) {
     while (tool) {
-        agentc_tool_t *next = tool->next;
+        ac_tool_t *next = tool->next;
         AGENTC_FREE(tool->name);
         AGENTC_FREE(tool->description);
-        agentc_param_free(tool->parameters);
+        AGENTC_FREE((void*)tool->tools_group);
+        ac_param_free(tool->parameters);
         AGENTC_FREE(tool);
         tool = next;
     }
 }
 
-void agentc_tool_registry_destroy(agentc_tool_registry_t *registry) {
-    if (!registry) return;
+void ac_tools_destroy(ac_tools_t *tools) {
+    if (!tools) return;
 
-    tool_free(registry->tools);
-    AGENTC_FREE(registry);
+    tool_free(tools->tools);
+    AGENTC_FREE(tools);
 }
 
-agentc_err_t agentc_tool_register(
-    agentc_tool_registry_t *registry,
-    const agentc_tool_t *tool
+agentc_err_t ac_tool_register(
+    ac_tools_t *tools,
+    const ac_tool_t *tool
 ) {
-    if (!registry || !tool || !tool->name || !tool->handler) {
+    if (!tools || !tool || !tool->name || !tool->handler) {
         return AGENTC_ERR_INVALID_ARG;
     }
 
     /* Check for duplicate */
-    if (agentc_tool_get(registry, tool->name)) {
-        AGENTC_LOG_WARN("Tool '%s' already registered, skipping", tool->name);
+    if (ac_tool_get(tools, tool->name)) {
+        AC_LOG_WARN("Tool '%s' already registered, skipping", tool->name);
         return AGENTC_ERR_INVALID_ARG;
     }
 
     /* Create copy */
-    agentc_tool_t *copy = AGENTC_CALLOC(1, sizeof(agentc_tool_t));
+    ac_tool_t *copy = AGENTC_CALLOC(1, sizeof(ac_tool_t));
     if (!copy) return AGENTC_ERR_NO_MEMORY;
 
     copy->name = AGENTC_STRDUP(tool->name);
@@ -236,6 +207,7 @@ agentc_err_t agentc_tool_register(
     copy->parameters = tool->parameters ? param_clone(tool->parameters) : NULL;
     copy->handler = tool->handler;
     copy->user_data = tool->user_data;
+    copy->tools_group = tool->tools_group ? tool->tools_group : NULL;
     copy->next = NULL;
 
     if (!copy->name) {
@@ -244,29 +216,29 @@ agentc_err_t agentc_tool_register(
     }
 
     /* Append to list */
-    if (!registry->tools) {
-        registry->tools = copy;
+    if (!tools->tools) {
+        tools->tools = copy;
     } else {
-        agentc_tool_t *tail = registry->tools;
+        ac_tool_t *tail = tools->tools;
         while (tail->next) {
             tail = tail->next;
         }
         tail->next = copy;
     }
 
-    registry->count++;
-    AGENTC_LOG_INFO("Registered tool: %s", copy->name);
+    tools->count++;
+    AC_LOG_INFO("Registered tool: %s", copy->name);
 
     return AGENTC_OK;
 }
 
-const agentc_tool_t *agentc_tool_get(
-    agentc_tool_registry_t *registry,
+const ac_tool_t *ac_tool_get(
+    ac_tools_t *tools,
     const char *name
 ) {
-    if (!registry || !name) return NULL;
+    if (!tools || !name) return NULL;
 
-    for (agentc_tool_t *t = registry->tools; t; t = t->next) {
+    for (ac_tool_t *t = tools->tools; t; t = t->next) {
         if (strcmp(t->name, name) == 0) {
             return t;
         }
@@ -275,26 +247,26 @@ const agentc_tool_t *agentc_tool_get(
     return NULL;
 }
 
-const agentc_tool_t *agentc_tool_list(agentc_tool_registry_t *registry) {
-    if (!registry) return NULL;
-    return registry->tools;
+const ac_tool_t *ac_tool_list(ac_tools_t *tools) {
+    if (!tools) return NULL;
+    return tools->tools;
 }
 
-size_t agentc_tool_count(agentc_tool_registry_t *registry) {
-    if (!registry) return 0;
-    return registry->count;
+size_t ac_tool_count(ac_tools_t *tools) {
+    if (!tools) return 0;
+    return tools->count;
 }
 
 /*============================================================================
  * Tool Execution
  *============================================================================*/
 
-agentc_err_t agentc_tool_execute(
-    agentc_tool_registry_t *registry,
-    const agentc_tool_call_t *call,
-    agentc_tool_result_t *result
+agentc_err_t ac_tool_execute(
+    ac_tools_t *tools,
+    const ac_tool_call_t *call,
+    ac_tool_result_t *result
 ) {
-    if (!registry || !call || !result) {
+    if (!tools || !call || !result) {
         return AGENTC_ERR_INVALID_ARG;
     }
 
@@ -302,9 +274,9 @@ agentc_err_t agentc_tool_execute(
     result->tool_call_id = call->id ? AGENTC_STRDUP(call->id) : NULL;
 
     /* Find tool */
-    const agentc_tool_t *tool = agentc_tool_get(registry, call->name);
+    const ac_tool_t *tool = ac_tool_get(tools, call->name);
     if (!tool) {
-        AGENTC_LOG_ERROR("Tool not found: %s", call->name);
+        AC_LOG_ERROR("Tool not found: %s", call->name);
         result->is_error = 1;
         result->output = AGENTC_STRDUP("{\"error\": \"tool not found\"}");
         return AGENTC_OK;  /* Not a fatal error */
@@ -315,7 +287,7 @@ agentc_err_t agentc_tool_execute(
     if (call->arguments && strlen(call->arguments) > 0) {
         args = cJSON_Parse(call->arguments);
         if (!args) {
-            AGENTC_LOG_ERROR("Failed to parse arguments for tool: %s", call->name);
+            AC_LOG_ERROR("Failed to parse arguments for tool: %s", call->name);
             result->is_error = 1;
             result->output = AGENTC_STRDUP("{\"error\": \"invalid arguments JSON\"}");
             return AGENTC_OK;
@@ -325,14 +297,14 @@ agentc_err_t agentc_tool_execute(
     }
 
     /* Execute handler */
-    AGENTC_LOG_DEBUG("Executing tool: %s", call->name);
+    AC_LOG_DEBUG("Executing tool: %s", call->name);
     char *output = NULL;
     agentc_err_t err = tool->handler(args, &output, tool->user_data);
 
     cJSON_Delete(args);
 
     if (err != AGENTC_OK) {
-        AGENTC_LOG_ERROR("Tool execution failed: %s (error %d)", call->name, err);
+        AC_LOG_ERROR("Tool execution failed: %s (error %d)", call->name, err);
         result->is_error = 1;
         if (output) {
             result->output = output;
@@ -347,34 +319,34 @@ agentc_err_t agentc_tool_execute(
     result->output = output ? output : AGENTC_STRDUP("{}");
     result->is_error = 0;
 
-    AGENTC_LOG_DEBUG("Tool result: %s", result->output);
+    AC_LOG_DEBUG("Tool result: %s", result->output);
     return AGENTC_OK;
 }
 
-agentc_err_t agentc_tool_execute_all(
-    agentc_tool_registry_t *registry,
-    const agentc_tool_call_t *calls,
-    agentc_tool_result_t **results
+agentc_err_t ac_tool_execute_all(
+    ac_tools_t *tools,
+    const ac_tool_call_t *calls,
+    ac_tool_result_t **results
 ) {
-    if (!registry || !results) {
+    if (!tools || !results) {
         return AGENTC_ERR_INVALID_ARG;
     }
 
     *results = NULL;
-    agentc_tool_result_t *tail = NULL;
+    ac_tool_result_t *tail = NULL;
 
-    for (const agentc_tool_call_t *call = calls; call; call = call->next) {
-        agentc_tool_result_t *result = AGENTC_CALLOC(1, sizeof(agentc_tool_result_t));
+    for (const ac_tool_call_t *call = calls; call; call = call->next) {
+        ac_tool_result_t *result = AGENTC_CALLOC(1, sizeof(ac_tool_result_t));
         if (!result) {
-            agentc_tool_result_free(*results);
+            ac_tool_result_free(*results);
             *results = NULL;
             return AGENTC_ERR_NO_MEMORY;
         }
 
-        agentc_err_t err = agentc_tool_execute(registry, call, result);
+        agentc_err_t err = ac_tool_execute(tools, call, result);
         if (err != AGENTC_OK) {
             AGENTC_FREE(result);
-            agentc_tool_result_free(*results);
+            ac_tool_result_free(*results);
             *results = NULL;
             return err;
         }
@@ -396,13 +368,13 @@ agentc_err_t agentc_tool_execute_all(
  * JSON Schema Generation
  *============================================================================*/
 
-static cJSON *param_to_json_schema(const agentc_param_t *params) {
+static cJSON *param_to_json_schema(const ac_param_t *params) {
     cJSON *properties = cJSON_CreateObject();
     cJSON *required = cJSON_CreateArray();
 
-    for (const agentc_param_t *p = params; p; p = p->next) {
+    for (const ac_param_t *p = params; p; p = p->next) {
         cJSON *prop = cJSON_CreateObject();
-        cJSON_AddStringToObject(prop, "type", agentc_param_type_to_string(p->type));
+        cJSON_AddStringToObject(prop, "type", ac_param_type_to_string(p->type));
 
         if (p->description) {
             cJSON_AddStringToObject(prop, "description", p->description);
@@ -448,12 +420,12 @@ static cJSON *param_to_json_schema(const agentc_param_t *params) {
     return schema;
 }
 
-char *agentc_tools_to_json(agentc_tool_registry_t *registry) {
-    if (!registry) return NULL;
+char *ac_tools_to_json(ac_tools_t *tools) {
+    if (!tools) return NULL;
 
-    cJSON *tools = cJSON_CreateArray();
+    cJSON *tools_arr = cJSON_CreateArray();
 
-    for (const agentc_tool_t *t = registry->tools; t; t = t->next) {
+    for (const ac_tool_t *t = tools->tools; t; t = t->next) {
         cJSON *tool = cJSON_CreateObject();
         cJSON_AddStringToObject(tool, "type", "function");
 
@@ -478,11 +450,11 @@ char *agentc_tools_to_json(agentc_tool_registry_t *registry) {
         }
 
         cJSON_AddItemToObject(tool, "function", func);
-        cJSON_AddItemToArray(tools, tool);
+        cJSON_AddItemToArray(tools_arr, tool);
     }
 
-    char *json = cJSON_PrintUnformatted(tools);
-    cJSON_Delete(tools);
+    char *json = cJSON_PrintUnformatted(tools_arr);
+    cJSON_Delete(tools_arr);
 
     return json;
 }
