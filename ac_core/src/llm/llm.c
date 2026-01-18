@@ -1,11 +1,13 @@
 /**
  * @file llm.c
- * @brief LLM API client implementation
+ * @brief LLM API client implementation with provider routing
  */
 
 #include "agentc/llm.h"
 #include "agentc/tool.h"
 #include "agentc/platform.h"
+#include "agentc/log.h"
+#include "llm_provider.h"
 #include "cJSON.h"
 #include <string.h>
 #include <stdio.h>
@@ -22,6 +24,7 @@
 struct ac_llm {
     ac_llm_params_t params;
     agentc_http_client_t *http;
+    const ac_llm_provider_t *provider;  /* Provider implementation */
     /* Owned copies */
     char *model_copy;
     char *api_key_copy;
@@ -184,6 +187,20 @@ ac_llm_t *ac_llm_create(const ac_llm_params_t *params) {
     llm->params.top_k = params->top_k;
     llm->params.timeout_ms = (params->timeout_ms > 0) ? params->timeout_ms : DEFAULT_TIMEOUT_MS;
 
+    /* Find appropriate provider */
+    llm->provider = ac_llm_find_provider(&llm->params);
+    if (!llm->provider) {
+        AC_LOG_ERROR("No provider found for model=%s, base=%s", 
+                     llm->params.model, llm->params.api_base);
+        AGENTC_FREE(llm->model_copy);
+        AGENTC_FREE(llm->api_key_copy);
+        AGENTC_FREE(llm->api_base_copy);
+        AGENTC_FREE(llm->instructions_copy);
+        AGENTC_FREE(llm->organization_copy);
+        AGENTC_FREE(llm);
+        return NULL;
+    }
+
     /* Create HTTP client */
     agentc_http_client_config_t http_config = {
         .default_timeout_ms = llm->params.timeout_ms,
@@ -200,7 +217,8 @@ ac_llm_t *ac_llm_create(const ac_llm_params_t *params) {
         return NULL;
     }
 
-    AC_LOG_INFO("LLM created: model=%s, base=%s", llm->params.model, llm->params.api_base);
+    AC_LOG_INFO("LLM created: provider=%s, model=%s, base=%s", 
+                llm->provider->name, llm->params.model, llm->params.api_base);
     return llm;
 }
 
@@ -217,10 +235,29 @@ void ac_llm_destroy(ac_llm_t *llm) {
 }
 
 /*============================================================================
+ * Provider Routing
+ *============================================================================*/
+
+const ac_llm_provider_t* ac_llm_find_provider(const ac_llm_params_t* params) {
+    // Try each built-in provider
+    if (ac_provider_anthropic.can_handle(params)) {
+        return &ac_provider_anthropic;
+    }
+    
+    if (ac_provider_openai.can_handle(params)) {
+        return &ac_provider_openai;
+    }
+    
+    // TODO: Check for custom providers in providers/ directory
+    
+    return NULL;
+}
+
+/*============================================================================
  * Build Message JSON with Tool Calls Support
  *============================================================================*/
 
-static cJSON *build_message_json(const ac_message_t *msg) {
+cJSON *build_message_json(const ac_message_t *msg) {
     cJSON *msg_obj = cJSON_CreateObject();
     cJSON_AddStringToObject(msg_obj, "role", ac_role_to_string(msg->role));
 
@@ -261,10 +298,10 @@ static cJSON *build_message_json(const ac_message_t *msg) {
 }
 
 /*============================================================================
- * Build Request JSON
+ * Build Request JSON (used by providers)
  *============================================================================*/
 
-static char *build_chat_request_json(
+char *build_chat_request_json(
     const ac_llm_t *llm,
     const ac_message_t *messages,
     const char *tools
@@ -326,10 +363,10 @@ static char *build_chat_request_json(
 }
 
 /*============================================================================
- * Parse Tool Calls from Response
+ * Parse Tool Calls from Response (used by providers)
  *============================================================================*/
 
-static ac_tool_call_t *parse_tool_calls(cJSON *tool_calls_arr) {
+ac_tool_call_t *parse_tool_calls(cJSON *tool_calls_arr) {
     if (!tool_calls_arr || !cJSON_IsArray(tool_calls_arr)) {
         return NULL;
     }
@@ -374,10 +411,10 @@ static ac_tool_call_t *parse_tool_calls(cJSON *tool_calls_arr) {
 }
 
 /*============================================================================
- * Parse Response JSON
+ * Parse Response JSON (used by providers)
  *============================================================================*/
 
-static agentc_err_t parse_chat_response(
+agentc_err_t parse_chat_response(
     const char *json,
     ac_chat_response_t *response
 ) {
@@ -486,64 +523,13 @@ agentc_err_t ac_llm_chat(
         return AGENTC_ERR_INVALID_ARG;
     }
 
-    /* Build URL */
-    char url[512];
-    snprintf(url, sizeof(url), "%s/chat/completions", llm->params.api_base);
-
-    /* Build request body */
-    char *body = build_chat_request_json(llm, messages, tools);
-    if (!body) {
-        return AGENTC_ERR_NO_MEMORY;
+    if (!llm->provider || !llm->provider->chat) {
+        AC_LOG_ERROR("No provider chat function available");
+        return AGENTC_ERR_INVALID_ARG;
     }
 
-    AC_LOG_DEBUG("Request body: %s", body);
-
-    /* Build headers */
-    char auth_header[512];
-    snprintf(auth_header, sizeof(auth_header), "Bearer %s", llm->params.api_key);
-
-    agentc_http_header_t *headers = NULL;
-    agentc_http_header_append(&headers,
-        agentc_http_header_create("Content-Type", "application/json; charset=utf-8"));
-    agentc_http_header_append(&headers,
-        agentc_http_header_create("Authorization", auth_header));
-
-    /* Make request */
-    agentc_http_request_t req = {
-        .url = url,
-        .method = AGENTC_HTTP_POST,
-        .headers = headers,
-        .body = body,
-        .body_len = strlen(body),
-        .timeout_ms = llm->params.timeout_ms,
-        .verify_ssl = 1,
-    };
-
-    agentc_http_response_t http_resp = {0};
-    agentc_err_t err = agentc_http_request(llm->http, &req, &http_resp);
-
-    /* Cleanup */
-    agentc_http_header_free(headers);
-    cJSON_free(body);
-
-    if (err != AGENTC_OK) {
-        agentc_http_response_free(&http_resp);
-        return err;
-    }
-
-    if (http_resp.status_code != 200) {
-        AC_LOG_ERROR("HTTP %d: %s", http_resp.status_code,
-            http_resp.body ? http_resp.body : "");
-        agentc_http_response_free(&http_resp);
-        return AGENTC_ERR_HTTP;
-    }
-
-    /* Parse response */
-    AC_LOG_DEBUG("Response: %s", http_resp.body);
-    err = parse_chat_response(http_resp.body, response);
-
-    agentc_http_response_free(&http_resp);
-    return err;
+    /* Delegate to provider implementation */
+    return llm->provider->chat(llm, messages, tools, response);
 }
 
 /*============================================================================
