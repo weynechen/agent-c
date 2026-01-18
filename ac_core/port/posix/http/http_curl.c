@@ -1,10 +1,12 @@
 /**
- * @file curl_backend.c
- * @brief libcurl HTTP backend implementation
+ * @file http_curl.c
+ * @brief libcurl HTTP backend for POSIX platforms (Linux/macOS)
+ *
+ * This is the hosted platform implementation using libcurl.
  */
 
-#include "agentc/http_client.h"
-#include "agentc/platform.h"
+#include <agentc/http_client.h>
+#include <agentc/log.h>
 #include <curl/curl.h>
 #include <string.h>
 
@@ -95,7 +97,7 @@ agentc_err_t agentc_http_init(void) {
     }
     
     s_curl_initialized = 1;
-    AC_LOG_DEBUG("CURL backend initialized");
+    AC_LOG_DEBUG("CURL backend initialized (POSIX)");
     return AGENTC_OK;
 }
 
