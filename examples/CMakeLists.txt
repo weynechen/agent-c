@@ -11,10 +11,12 @@ target_link_libraries(chat_demo PRIVATE
     ac_core::ac_core
     agentc_markdown
     agentc_dotenv
+    agentc_platform_init
 )
 target_include_directories(chat_demo PRIVATE
     ${CJSON_INCLUDE}
     ${CMAKE_SOURCE_DIR}/libs/ac_hosted/src
+    ${CMAKE_SOURCE_DIR}/extras/args/include
 )
 if(AGENTC_USE_CURL)
     target_link_libraries(chat_demo PRIVATE CURL::libcurl)

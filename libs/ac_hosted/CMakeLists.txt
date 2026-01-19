@@ -67,6 +67,7 @@ add_library(agentc_markdown STATIC ${MARKDOWN_SOURCES} ${PCRE2_SOURCES})
 target_include_directories(agentc_markdown PUBLIC
     $<BUILD_INTERFACE:${MARKDOWN_DIR}>
     $<BUILD_INTERFACE:${PCRE2_DIR}>
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/libs/ac_core/include>
     $<INSTALL_INTERFACE:include>
 )
 target_compile_definitions(agentc_markdown PRIVATE

@@ -7,12 +7,36 @@
 #define AGENTC_LLM_INTERNAL_H
 
 #include "agentc/llm.h"
+#include "agentc/tool.h"
 #include "agentc/http_client.h"
+#include "llm_provider.h"
 #include "cJSON.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/*============================================================================
+ * Internal Structure Definition
+ *============================================================================*/
+
+/**
+ * @brief Internal LLM client structure
+ * 
+ * This structure is defined here so providers and internal functions
+ * can access the members.
+ */
+struct ac_llm {
+    ac_llm_params_t params;
+    agentc_http_client_t *http;
+    const ac_llm_provider_t *provider;  /* Provider implementation */
+    /* Owned copies */
+    char *model_copy;
+    char *api_key_copy;
+    char *api_base_copy;
+    char *instructions_copy;
+    char *organization_copy;
+};
 
 /**
  * @brief Build message JSON object

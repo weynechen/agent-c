@@ -17,7 +17,7 @@
 #endif
 
 /* Include the markdown library */
-#include "render/markdown/md.h"
+#include "markdown/md.h"
 
 /* Sample Markdown content for demonstration */
 static const char* DEMO_MARKDOWN = 

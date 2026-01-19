@@ -7,7 +7,7 @@
 #include "agentc/tool.h"
 #include "agentc/platform.h"
 #include "agentc/log.h"
-#include "llm_provider.h"
+#include "llm_internal.h"
 #include "cJSON.h"
 #include <string.h>
 #include <stdio.h>
@@ -16,22 +16,6 @@
 #define DEFAULT_MODEL "gpt-3.5-turbo"
 #define DEFAULT_TIMEOUT_MS 60000
 #define DEFAULT_TEMPERATURE 0.7f
-
-/*============================================================================
- * Internal Structures
- *============================================================================*/
-
-struct ac_llm {
-    ac_llm_params_t params;
-    agentc_http_client_t *http;
-    const ac_llm_provider_t *provider;  /* Provider implementation */
-    /* Owned copies */
-    char *model_copy;
-    char *api_key_copy;
-    char *api_base_copy;
-    char *instructions_copy;
-    char *organization_copy;
-};
 
 /*============================================================================
  * Role Helpers

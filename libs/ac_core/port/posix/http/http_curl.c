@@ -5,8 +5,9 @@
  * This is the hosted platform implementation using libcurl.
  */
 
-#include <agentc/http_client.h>
-#include <agentc/log.h>
+#include "agentc/platform.h"
+#include "agentc/http_client.h"
+#include "agentc/log.h"
 #include <curl/curl.h>
 #include <string.h>
 
