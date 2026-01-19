@@ -3,27 +3,27 @@
 cmake_minimum_required(VERSION 3.14)
 
 # Get cJSON include dir
-set(CJSON_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/../agentc_hosted/components/cjson)
+set(CJSON_INCLUDE ${CMAKE_SOURCE_DIR}/external/cjson)
 
 # Example 1: Simple chat demo with Markdown rendering
-add_executable(chat_demo terminal/chat_demo.c)
+add_executable(chat_demo hosted/chat_demo.c)
 target_link_libraries(chat_demo PRIVATE
-    agentc_core
+    ac_core::ac_core
     agentc_markdown
     agentc_dotenv
 )
 target_include_directories(chat_demo PRIVATE
     ${CJSON_INCLUDE}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../agentc_hosted/src
+    ${CMAKE_SOURCE_DIR}/libs/ac_hosted/src
 )
 if(AGENTC_USE_CURL)
     target_link_libraries(chat_demo PRIVATE CURL::libcurl)
 endif()
 
 # Example 2: Tool calling / ReACT Agent demo
-add_executable(chat_tools terminal/chat_tools.c)
+add_executable(chat_tools hosted/chat_tools.c)
 target_link_libraries(chat_tools PRIVATE
-    agentc_core
+    ac_core::ac_core
     agentc_dotenv
 )
 target_include_directories(chat_tools PRIVATE
@@ -37,10 +37,10 @@ if(AGENTC_USE_CURL)
 endif()
 
 # Example 3: Markdown rendering demo
-add_executable(chat_markdown terminal/chat_markdown.c)
+add_executable(chat_markdown hosted/chat_markdown.c)
 target_link_libraries(chat_markdown PRIVATE agentc_markdown)
 target_include_directories(chat_markdown PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../agentc_hosted/src
+    ${CMAKE_SOURCE_DIR}/libs/ac_hosted/src
 )
 
 # Example 4: TUI chat demo with Notcurses (WeChat-style interface)
@@ -50,9 +50,9 @@ if(PkgConfig_FOUND)
 endif()
 
 if(NOTCURSES_FOUND)
-    add_executable(chat_tui terminal/chat_tui.c)
+    add_executable(chat_tui hosted/chat_tui.c)
     target_link_libraries(chat_tui PRIVATE
-        agentc_core
+        ac_core::ac_core
         agentc_dotenv
         ${NOTCURSES_LIBRARIES}
     )

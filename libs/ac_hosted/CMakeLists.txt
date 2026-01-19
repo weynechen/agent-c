@@ -11,9 +11,12 @@ set(AGENTC_HOSTED_SOURCES
 )
 
 # Component: dotenv
-set(DOTENV_DIR ${CMAKE_CURRENT_SOURCE_DIR}/components/dotenv)
+set(DOTENV_DIR ${CMAKE_SOURCE_DIR}/external/dotenv)
 add_library(agentc_dotenv STATIC ${DOTENV_DIR}/dotenv.c)
-target_include_directories(agentc_dotenv PUBLIC ${DOTENV_DIR})
+target_include_directories(agentc_dotenv PUBLIC
+    $<BUILD_INTERFACE:${DOTENV_DIR}>
+    $<INSTALL_INTERFACE:include>
+)
 
 # Component: Markdown renderer
 set(MARKDOWN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/markdown)
@@ -25,7 +28,7 @@ set(MARKDOWN_SOURCES
 )
 
 # PCRE2 dependency for Markdown
-set(PCRE2_DIR ${CMAKE_CURRENT_SOURCE_DIR}/components/pcre2/src)
+set(PCRE2_DIR ${CMAKE_SOURCE_DIR}/external/pcre2/src)
 set(PCRE2_SOURCES
     ${PCRE2_DIR}/pcre2_auto_possess.c
     ${PCRE2_DIR}/pcre2_chartables.c
@@ -62,8 +65,9 @@ set(PCRE2_SOURCES
 
 add_library(agentc_markdown STATIC ${MARKDOWN_SOURCES} ${PCRE2_SOURCES})
 target_include_directories(agentc_markdown PUBLIC
-    ${MARKDOWN_DIR}
-    ${PCRE2_DIR}
+    $<BUILD_INTERFACE:${MARKDOWN_DIR}>
+    $<BUILD_INTERFACE:${PCRE2_DIR}>
+    $<INSTALL_INTERFACE:include>
 )
 target_compile_definitions(agentc_markdown PRIVATE
     HAVE_CONFIG_H
@@ -71,19 +75,29 @@ target_compile_definitions(agentc_markdown PRIVATE
 )
 
 # Hosted library (combining all hosted features)
-add_library(agentc_hosted STATIC ${AGENTC_HOSTED_SOURCES})
-target_include_directories(agentc_hosted PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/ac_core/include
+add_library(ac_hosted STATIC ${AGENTC_HOSTED_SOURCES})
+add_library(ac_hosted::ac_hosted ALIAS ac_hosted)
+
+target_include_directories(ac_hosted PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
 )
-target_link_libraries(agentc_hosted PUBLIC
-    agentc_core
+
+target_link_libraries(ac_hosted PUBLIC
+    ac_core::ac_core
 )
 
 # Install libraries
-install(TARGETS agentc_hosted agentc_dotenv agentc_markdown
+install(TARGETS ac_hosted agentc_dotenv agentc_markdown
+    EXPORT ac_hosted-targets
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
+)
+
+install(EXPORT ac_hosted-targets
+    FILE ac_hostedTargets.cmake
+    NAMESPACE ac_hosted::
+    DESTINATION lib/cmake/ac_hosted
 )
 
 # Install headers

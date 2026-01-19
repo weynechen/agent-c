@@ -40,10 +40,10 @@ if(AGENTC_USE_CURL)
 endif()
 
 # Add subdirectories
-add_subdirectory(ac_core)
+add_subdirectory(libs/ac_core)
 
 if(AGENTC_PROFILE STREQUAL "hosted")
-    add_subdirectory(ac_hosted)
+    add_subdirectory(libs/ac_hosted)
 endif()
 
 if(AGENTC_BUILD_TOOLS)
@@ -59,7 +59,7 @@ if(AGENTC_BUILD_TESTS)
 endif()
 
 # Install
-install(DIRECTORY ac_core/include/ DESTINATION include)
+install(DIRECTORY libs/ac_core/include/ DESTINATION include)
 if(AGENTC_PROFILE STREQUAL "hosted")
-    install(DIRECTORY ac_hosted/include/ DESTINATION include)
+    install(DIRECTORY libs/ac_hosted/include/ DESTINATION include)
 endif()
