@@ -5,7 +5,7 @@
 ## 目录结构
 
 ```
-extras/args/
+external/args/
 ├── CMakeLists.txt         # 构建配置
 ├── include/
 │   └── platform_init.h    # 平台初始化接口
@@ -96,7 +96,7 @@ target_link_libraries(your_target PRIVATE agentc_platform_init)
 
 # Include header directory
 target_include_directories(your_target PRIVATE
-    ${CMAKE_SOURCE_DIR}/extras/args/include
+    ${CMAKE_SOURCE_DIR}/external/args/include
 )
 ```
 

@@ -16,7 +16,7 @@ target_link_libraries(chat_demo PRIVATE
 target_include_directories(chat_demo PRIVATE
     ${CJSON_INCLUDE}
     ${CMAKE_SOURCE_DIR}/libs/ac_hosted/src
-    ${CMAKE_SOURCE_DIR}/extras/args/include
+    ${CMAKE_SOURCE_DIR}/external/args/include
 )
 if(AGENTC_USE_CURL)
     target_link_libraries(chat_demo PRIVATE CURL::libcurl)

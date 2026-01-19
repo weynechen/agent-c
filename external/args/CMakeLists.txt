@@ -18,4 +18,4 @@ target_compile_features(agentc_platform_init PUBLIC c_std_11)
 # Add namespace alias
 add_library(agentc::platform_init ALIAS agentc_platform_init)
 
-message(STATUS "AgentC extras/args: platform_init library configured")
+message(STATUS "AgentC external/args: platform_init library configured")
