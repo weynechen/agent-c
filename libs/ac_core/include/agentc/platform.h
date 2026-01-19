@@ -122,6 +122,9 @@
 
 /*============================================================================
  * Debug/Logging
+ * 
+ * Note: If log.h is included, it will provide more detailed logging macros.
+ * These are simple fallback definitions for minimal environments.
  *============================================================================*/
 
 #ifndef AC_LOG_LEVEL
@@ -138,10 +141,22 @@
         } while(0)
 #endif
 
-#define AC_LOG_ERROR(fmt, ...) AC_LOG(1, "ERROR: " fmt, ##__VA_ARGS__)
-#define AC_LOG_WARN(fmt, ...)  AC_LOG(2, "WARN: " fmt, ##__VA_ARGS__)
-#define AC_LOG_INFO(fmt, ...)  AC_LOG(3, "INFO: " fmt, ##__VA_ARGS__)
-#define AC_LOG_DEBUG(fmt, ...) AC_LOG(4, "DEBUG: " fmt, ##__VA_ARGS__)
+/* Only define these if not already defined by log.h */
+#ifndef AC_LOG_ERROR
+    #define AC_LOG_ERROR(fmt, ...) AC_LOG(1, "ERROR: " fmt, ##__VA_ARGS__)
+#endif
+
+#ifndef AC_LOG_WARN
+    #define AC_LOG_WARN(fmt, ...)  AC_LOG(2, "WARN: " fmt, ##__VA_ARGS__)
+#endif
+
+#ifndef AC_LOG_INFO
+    #define AC_LOG_INFO(fmt, ...)  AC_LOG(3, "INFO: " fmt, ##__VA_ARGS__)
+#endif
+
+#ifndef AC_LOG_DEBUG
+    #define AC_LOG_DEBUG(fmt, ...) AC_LOG(4, "DEBUG: " fmt, ##__VA_ARGS__)
+#endif
 
 /*============================================================================
  * Static Assertions

@@ -16,18 +16,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
-#ifdef _WIN32
-#include <windows.h>
-#endif
 #include "agentc.h"
 #include "dotenv.h"
-#include "render/markdown/md.h"
+#include "markdown/md.h"
+#include "platform_init.h"
 
 #define MAX_INPUT_LEN 4096
 #define MAX_HISTORY 20
 
 static volatile int g_running = 1;
-static md_stream_t *g_md_stream = NULL;
 static int g_use_markdown = 1;
 
 static void signal_handler(int sig) {
@@ -41,43 +38,16 @@ static void print_usage(void) {
     printf("  /help     - Show this help\n");
     printf("  /clear    - Clear conversation history\n");
     printf("  /model    - Show current model\n");
-    printf("  /stream   - Toggle streaming mode\n");
     printf("  /md       - Toggle markdown rendering\n");
     printf("  /quit     - Exit\n\n");
-}
-
-/* Streaming callback - print tokens as they arrive */
-static int on_stream_chunk(const char *data, size_t len, void *user_data) {
-    (void)user_data;
-    if (g_use_markdown && g_md_stream) {
-        md_stream_feed(g_md_stream, data, len);
-    } else {
-        fwrite(data, 1, len, stdout);
-        fflush(stdout);
-    }
-    return g_running ? 0 : -1;  /* Return -1 to abort if interrupted */
-}
-
-static void on_stream_done(const char *finish_reason, int total_tokens, void *user_data) {
-    (void)user_data;
-    if (g_use_markdown && g_md_stream) {
-        md_stream_finish(g_md_stream);
-    }
-    printf("\n");
-    if (finish_reason) {
-        printf("[%s, %d tokens]\n", finish_reason, total_tokens);
-    }
 }
 
 int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
 
-#ifdef _WIN32
-    /* Set console to UTF-8 mode for proper Unicode display */
-    SetConsoleOutputCP(65001);
-    SetConsoleCP(65001);
-#endif
+    /* Initialize platform-specific terminal settings */
+    platform_init_terminal(NULL);
     
     /* Load environment from .env file */
     if (env_load(".", false) == 0) {
@@ -89,54 +59,56 @@ int main(int argc, char *argv[]) {
     /* Get API key from environment */
     const char *api_key = getenv("OPENAI_API_KEY");
     if (!api_key || strlen(api_key) == 0) {
-        AC_LOG_ERROR( "Error: OPENAI_API_KEY not set\n");
-        AC_LOG_ERROR( "Create a .env file with: OPENAI_API_KEY=sk-xxx\n");
+        AC_LOG_ERROR("Error: OPENAI_API_KEY not set\n");
+        AC_LOG_ERROR("Create a .env file with: OPENAI_API_KEY=sk-xxx\n");
         return 1;
     }
     
     /* Optional: custom base URL and model */
     const char *base_url = getenv("OPENAI_BASE_URL");
     const char *model = getenv("OPENAI_MODEL");
+    if (!model) {
+        model = "gpt-3.5-turbo";
+    }
     
     /* Setup signal handler */
     signal(SIGINT, signal_handler);
     
     /* Initialize AgentC */
-    agentc_err_t err = agentc_init();
+    agentc_err_t err = ac_init();
     if (err != AGENTC_OK) {
-        AC_LOG_ERROR( "Failed to initialize AgentC: %s\n", agentc_strerror(err));
+        AC_LOG_ERROR("Failed to initialize AgentC: %s\n", ac_strerror(err));
         return 1;
     }
     
     /* Create LLM client */
-    agentc_llm_config_t config = {
-        .api_key = api_key,
-        .base_url = base_url,
+    ac_llm_params_t params = {
         .model = model,
+        .api_key = api_key,
+        .api_base = base_url,
+        .temperature = 0.7f,
         .timeout_ms = 120000,  /* 2 minutes for slow models */
     };
     
-    agentc_llm_client_t *llm = NULL;
-    err = agentc_llm_create(&config, &llm);
-    if (err != AGENTC_OK) {
-        AC_LOG_ERROR( "Failed to create LLM client: %s\n", agentc_strerror(err));
-        agentc_cleanup();
+    ac_llm_t *llm = ac_llm_create(&params);
+    if (!llm) {
+        AC_LOG_ERROR("Failed to create LLM client\n");
+        ac_cleanup();
         return 1;
     }
     
     printf("\n=== AgentC Chat Demo ===\n");
-    printf("Model: %s\n", model ? model : "gpt-3.5-turbo");
+    printf("Model: %s\n", model);
     printf("Endpoint: %s\n", base_url ? base_url : "https://api.openai.com/v1");
     printf("Markdown: %s (use /md to toggle)\n", g_use_markdown ? "ON" : "OFF");
     printf("Type /help for commands, /quit to exit\n\n");
     
     /* Conversation history */
-    agentc_message_t *history = NULL;
-    int use_streaming = 1;
+    ac_message_t *history = NULL;
     
     /* Add system message */
-    agentc_message_append(&history, 
-        agentc_message_create(AGENTC_ROLE_SYSTEM, 
+    ac_message_append(&history, 
+        ac_message_create(AC_ROLE_SYSTEM, 
             "You are a helpful assistant. Be concise and clear."));
     
     char input[MAX_INPUT_LEN];
@@ -168,19 +140,15 @@ int main(int argc, char *argv[]) {
                 print_usage();
                 continue;
             } else if (strcmp(input, "/clear") == 0) {
-                agentc_message_free(history);
+                ac_message_free(history);
                 history = NULL;
-                agentc_message_append(&history,
-                    agentc_message_create(AGENTC_ROLE_SYSTEM,
+                ac_message_append(&history,
+                    ac_message_create(AC_ROLE_SYSTEM,
                         "You are a helpful assistant. Be concise and clear."));
                 printf("[History cleared]\n");
                 continue;
             } else if (strcmp(input, "/model") == 0) {
-                printf("[Model: %s]\n", model ? model : "gpt-3.5-turbo");
-                continue;
-            } else if (strcmp(input, "/stream") == 0) {
-                use_streaming = !use_streaming;
-                printf("[Streaming: %s]\n", use_streaming ? "ON" : "OFF");
+                printf("[Model: %s]\n", model);
                 continue;
             } else if (strcmp(input, "/md") == 0) {
                 g_use_markdown = !g_use_markdown;
@@ -193,70 +161,42 @@ int main(int argc, char *argv[]) {
         }
         
         /* Add user message to history */
-        agentc_message_append(&history, 
-            agentc_message_create(AGENTC_ROLE_USER, input));
-        
-        /* Build request */
-        agentc_chat_request_t req = {
-            .messages = history,
-            .temperature = 0.7f,
-        };
+        ac_message_append(&history, 
+            ac_message_create(AC_ROLE_USER, input));
         
         printf("Assistant: ");
         fflush(stdout);
         
-        if (use_streaming) {
-            /* Streaming mode - create markdown stream if enabled */
+        /* Blocking mode */
+        ac_chat_response_t resp = {0};
+        err = ac_llm_chat(llm, history, NULL, &resp);
+        
+        if (err == AGENTC_OK && resp.content) {
             if (g_use_markdown) {
-                g_md_stream = md_stream_new();
-            }
-            
-            err = agentc_llm_chat_stream(llm, &req, 
-                on_stream_chunk, on_stream_done, NULL);
-            
-            if (err != AGENTC_OK) {
-                printf("\n[Error: %s]\n", agentc_strerror(err));
-            }
-            
-            /* Clean up markdown stream */
-            if (g_md_stream) {
-                md_stream_free(g_md_stream);
-                g_md_stream = NULL;
-            }
-            /* Note: In streaming mode, we don't easily get the full response
-               to add to history. A real implementation would accumulate it. */
-        } else {
-            /* Blocking mode */
-            agentc_chat_response_t resp = {0};
-            err = agentc_llm_chat(llm, &req, &resp);
-            
-            if (err == AGENTC_OK && resp.content) {
-                if (g_use_markdown) {
-                    md_render(resp.content);
-                } else {
-                    printf("%s\n", resp.content);
-                }
-                printf("[%s, %d tokens]\n", 
-                    resp.finish_reason ? resp.finish_reason : "done",
-                    resp.total_tokens);
-                
-                /* Add assistant response to history */
-                agentc_message_append(&history,
-                    agentc_message_create(AGENTC_ROLE_ASSISTANT, resp.content));
+                md_render(resp.content);
             } else {
-                printf("[Error: %s]\n", agentc_strerror(err));
+                printf("%s\n", resp.content);
             }
+            printf("[%s, %d tokens]\n", 
+                resp.finish_reason ? resp.finish_reason : "done",
+                resp.total_tokens);
             
-            agentc_chat_response_free(&resp);
+            /* Add assistant response to history */
+            ac_message_append(&history,
+                ac_message_create(AC_ROLE_ASSISTANT, resp.content));
+        } else {
+            printf("[Error: %s]\n", ac_strerror(err));
         }
         
+        ac_chat_response_free(&resp);
         printf("\n");
     }
     
     /* Cleanup */
-    agentc_message_free(history);
-    agentc_llm_destroy(llm);
-    agentc_cleanup();
+    ac_message_free(history);
+    ac_llm_destroy(llm);
+    ac_cleanup();
+    platform_cleanup_terminal();
     
     printf("Goodbye!\n");
     return 0;

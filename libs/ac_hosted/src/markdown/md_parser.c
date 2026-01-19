@@ -5,6 +5,8 @@
 
 #include "md_parser.h"
 #include "md_utils.h"
+#include "agentc/platform.h"
+#include "agentc/log.h"
 
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>

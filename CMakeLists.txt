@@ -44,6 +44,7 @@ add_subdirectory(libs/ac_core)
 
 if(AGENTC_PROFILE STREQUAL "hosted")
     add_subdirectory(libs/ac_hosted)
+    add_subdirectory(extras/args)
 endif()
 
 if(AGENTC_BUILD_TOOLS)
