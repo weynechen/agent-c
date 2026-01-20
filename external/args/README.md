@@ -1,21 +1,21 @@
-# AgentC Args - 平台初始化和参数解析工具
+# AgentC Platform Wrap - 平台封装层
 
-这个模块为 hosted 环境提供平台相关的初始化功能和命令行参数解析工具。
+这个模块为 hosted 环境提供跨平台的抽象和工具函数。
 
 ## 目录结构
 
 ```
 external/args/
-├── CMakeLists.txt         # 构建配置
+├── CMakeLists.txt         # Build configuration
 ├── include/
-│   └── platform_init.h    # 平台初始化接口
+│   └── platform_wrap.h    # Platform wrapper interface
 └── src/
-    └── platform_init.c    # 平台初始化实现
+    └── platform_wrap.c    # Platform wrapper implementation
 ```
 
 ## 功能模块
 
-### 1. Platform Init (平台初始化)
+### 1. Terminal Initialization (终端初始化)
 
 提供跨平台的终端初始化功能，处理各平台的特定设置。
 
@@ -36,7 +36,7 @@ external/args/
 #### 使用示例
 
 ```c
-#include "platform_init.h"
+#include "platform_wrap.h"
 
 int main(void) {
     // Use default configuration (auto-detect)
@@ -66,7 +66,42 @@ platform_init_terminal(&config);
 - `0` = 强制禁用
 - `-1` = 自动检测（默认）
 
-#### API 参考
+### 2. UTF-8 Command Line Arguments (UTF-8 命令行参数)
+
+提供跨平台的 UTF-8 命令行参数处理，特别是解决 Windows 上的编码问题。
+
+#### 功能特性
+
+- **Windows**: 将系统编码（通常是 GBK）转换为 UTF-8
+- **Linux/macOS**: 直接使用原始 argv（通常已是 UTF-8）
+- **自动管理**: 自动处理内存分配和释放
+
+#### 使用示例
+
+```c
+#include "platform_wrap.h"
+
+int main(int argc, char *argv[]) {
+    platform_init_terminal(NULL);
+    
+    // Get UTF-8 encoded arguments (handles Windows encoding)
+    char **utf8_argv = platform_get_argv_utf8(argc, argv);
+    
+    // Use utf8_argv instead of argv
+    if (argc > 1) {
+        printf("First argument: %s\n", utf8_argv[1]);
+    }
+    
+    // Cleanup
+    platform_free_argv_utf8(utf8_argv, argc);
+    platform_cleanup_terminal();
+    return 0;
+}
+```
+
+## API 参考
+
+### Terminal Functions
 
 ```c
 // Get default configuration with auto-detection
@@ -79,20 +114,30 @@ int platform_init_terminal(const platform_init_config_t *config);
 void platform_cleanup_terminal(void);
 ```
 
+### Command Line Argument Functions
+
+```c
+// Get UTF-8 encoded command line arguments
+char **platform_get_argv_utf8(int argc, char *argv[]);
+
+// Free memory allocated by platform_get_argv_utf8
+void platform_free_argv_utf8(char **utf8_argv, int argc);
+```
+
 ## 设计原则
 
-1. **平台无关性**: 示例代码（如 `chat_demo.c`）不应包含任何平台相关的 `#ifdef` 宏
-2. **封装**: 所有平台相关逻辑封装在 `platform_init.c` 内部
+1. **平台无关性**: 应用代码不应包含任何平台相关的 `#ifdef` 宏
+2. **封装**: 所有平台相关逻辑封装在 `platform_wrap.c` 内部
 3. **清晰接口**: 提供简洁、易用的跨平台 API
-4. **可扩展**: 后续可添加更多功能（如参数解析、终端大小检测等）
+4. **可扩展**: 后续可添加更多平台相关的功能
 
 ## 集成到项目
 
 在 CMakeLists.txt 中：
 
 ```cmake
-# Link platform_init library
-target_link_libraries(your_target PRIVATE agentc_platform_init)
+# Link platform_wrap library
+target_link_libraries(your_target PRIVATE agentc_platform_wrap)
 
 # Include header directory
 target_include_directories(your_target PRIVATE
@@ -100,15 +145,16 @@ target_include_directories(your_target PRIVATE
 )
 ```
 
-## 未来扩展
+## 后续扩展方向
 
 计划添加的功能：
 
-- [ ] 命令行参数解析器 (`args_parser.h`)
+- [x] 终端 UTF-8 初始化
+- [x] 命令行参数 UTF-8 转换
 - [ ] 终端大小检测
-- [ ] 进度条支持
-- [ ] 颜色输出工具函数
-- [ ] 交互式输入工具
+- [ ] 环境变量处理
+- [ ] 文件路径规范化
+- [ ] 进程间通信工具
 
 ## 许可证
 

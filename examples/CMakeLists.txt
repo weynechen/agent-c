@@ -11,7 +11,7 @@ target_link_libraries(chat_demo PRIVATE
     ac_core::ac_core
     agentc_markdown
     agentc_dotenv
-    agentc_platform_init
+    agentc_platform_wrap
 )
 target_include_directories(chat_demo PRIVATE
     ${CJSON_INCLUDE}
@@ -27,9 +27,11 @@ add_executable(chat_tools hosted/chat_tools.c)
 target_link_libraries(chat_tools PRIVATE
     ac_core::ac_core
     agentc_dotenv
+    agentc_platform_wrap
 )
 target_include_directories(chat_tools PRIVATE
     ${CJSON_INCLUDE}
+    ${CMAKE_SOURCE_DIR}/external/args/include
 )
 if(NOT WIN32)
   target_link_libraries(chat_tools PRIVATE m)

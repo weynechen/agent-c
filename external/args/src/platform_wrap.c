@@ -1,11 +1,12 @@
 /**
- * @file platform_init.c
- * @brief Platform-specific terminal initialization implementation
+ * @file platform_wrap.c
+ * @brief Platform-specific wrapper layer implementation
  */
 
-#include "platform_init.h"
+#include "platform_wrap.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 /* Platform detection - internal use only */
 #ifdef _WIN32
@@ -111,4 +112,69 @@ void platform_cleanup_terminal(void) {
     }
 #endif
     /* Other platforms: no cleanup needed */
+}
+
+char **platform_get_argv_utf8(int argc, char *argv[]) {
+#ifdef PLATFORM_WINDOWS
+    /* 
+     * On Windows, argv[] uses system default encoding (usually GBK/CP936).
+     * Use Windows API to get UTF-8 encoded arguments.
+     */
+    (void)argv;  /* Original argv not used on Windows */
+    
+    int wargc;
+    LPWSTR *wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
+    if (!wargv || wargc != argc) {
+        /* Fallback to original argv on error */
+        return argv;
+    }
+    
+    /* Allocate array of string pointers */
+    char **utf8_argv = (char**)malloc(sizeof(char*) * argc);
+    if (!utf8_argv) {
+        LocalFree(wargv);
+        return argv;
+    }
+    
+    /* Convert each wide-char argument to UTF-8 */
+    for (int i = 0; i < argc; i++) {
+        int utf8_len = WideCharToMultiByte(CP_UTF8, 0, wargv[i], -1, NULL, 0, NULL, NULL);
+        if (utf8_len > 0) {
+            utf8_argv[i] = (char*)malloc(utf8_len);
+            if (utf8_argv[i]) {
+                WideCharToMultiByte(CP_UTF8, 0, wargv[i], -1, utf8_argv[i], utf8_len, NULL, NULL);
+            } else {
+                /* Allocation failed, use empty string */
+                utf8_argv[i] = strdup("");
+            }
+        } else {
+            /* Conversion failed, use empty string */
+            utf8_argv[i] = strdup("");
+        }
+    }
+    
+    LocalFree(wargv);
+    return utf8_argv;
+    
+#else
+    /* On Unix-like systems, argv is already in UTF-8 (or should be) */
+    (void)argc;
+    return argv;
+#endif
+}
+
+void platform_free_argv_utf8(char **utf8_argv, int argc) {
+#ifdef PLATFORM_WINDOWS
+    /* Free allocated memory on Windows */
+    if (utf8_argv) {
+        for (int i = 0; i < argc; i++) {
+            free(utf8_argv[i]);
+        }
+        free(utf8_argv);
+    }
+#else
+    /* On Unix-like systems, argv is not allocated by us */
+    (void)utf8_argv;
+    (void)argc;
+#endif
 }

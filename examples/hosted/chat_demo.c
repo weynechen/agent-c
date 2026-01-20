@@ -19,7 +19,7 @@
 #include "agentc.h"
 #include "dotenv.h"
 #include "markdown/md.h"
-#include "platform_init.h"
+#include "platform_wrap.h"
 
 #define MAX_INPUT_LEN 4096
 #define MAX_HISTORY 20

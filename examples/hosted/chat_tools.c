@@ -19,11 +19,8 @@
 #include <time.h>
 #include <math.h>
 
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <unistd.h>
-#endif
+/* Platform wrapper for terminal UTF-8 support and argument encoding */
+#include "platform_wrap.h"
 
 /* dotenv for loading .env file */
 #include "dotenv.h"
@@ -236,45 +233,18 @@ static void print_usage(const char *prog) {
 }
 
 int main(int argc, char *argv[]) {
-#ifdef _WIN32
-    /* Set console to UTF-8 mode for proper Unicode display */
-    SetConsoleOutputCP(65001);
-    SetConsoleCP(65001);
-#endif
+    /* Initialize terminal with UTF-8 support */
+    platform_init_terminal(NULL);
 
     if (argc < 2) {
         print_usage(argv[0]);
+        platform_cleanup_terminal();
         return 1;
     }
 
-#ifdef _WIN32
-    /* 
-     * On Windows, argv[] uses system default encoding (usually GBK).
-     * We need to use Windows API to get UTF-8 encoded arguments.
-     */
-    char *user_prompt = NULL;
-    {
-        int wargc;
-        LPWSTR *wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
-        if (wargv && wargc >= 2) {
-            /* Convert wargv[1] (user prompt) to UTF-8 */
-            int utf8_len = WideCharToMultiByte(CP_UTF8, 0, wargv[1], -1, NULL, 0, NULL, NULL);
-            if (utf8_len > 0) {
-                user_prompt = (char*)malloc(utf8_len);
-                if (user_prompt) {
-                    WideCharToMultiByte(CP_UTF8, 0, wargv[1], -1, user_prompt, utf8_len, NULL, NULL);
-                }
-            }
-            LocalFree(wargv);
-        }
-    }
-    if (!user_prompt) {
-        AC_LOG_ERROR( "Error: Failed to parse command line arguments\n");
-        return 1;
-    }
-#else
-    const char *user_prompt = argv[1];
-#endif
+    /* Get UTF-8 encoded command line arguments (handles Windows encoding issues) */
+    char **utf8_argv = platform_get_argv_utf8(argc, argv);
+    const char *user_prompt = utf8_argv[1];
 
     /* Load .env file */
     env_load(".", 0);
@@ -384,10 +354,9 @@ int main(int argc, char *argv[]) {
     ac_tools_destroy(tools);
     ac_llm_destroy(llm);
     ac_cleanup();
-
-#ifdef _WIN32
-    free(user_prompt);
-#endif
+    
+    platform_free_argv_utf8(utf8_argv, argc);
+    platform_cleanup_terminal();
 
     return (err == AGENTC_OK && result.status == AC_RUN_SUCCESS) ? 0 : 1;
 }

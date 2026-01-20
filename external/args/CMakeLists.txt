@@ -1,21 +1,21 @@
-# Platform initialization and argument parsing utilities for hosted environments
+# External Args Component
 
 cmake_minimum_required(VERSION 3.14)
 
-# Platform initialization library
-add_library(agentc_platform_init
-    src/platform_init.c
+# Platform wrapper library
+add_library(agentc_platform_wrap
+    src/platform_wrap.c
 )
 
-target_include_directories(agentc_platform_init PUBLIC
+target_include_directories(agentc_platform_wrap PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
 
-# Set C standard
-target_compile_features(agentc_platform_init PUBLIC c_std_11)
+# Require C11 for platform detection
+target_compile_features(agentc_platform_wrap PUBLIC c_std_11)
 
-# Add namespace alias
-add_library(agentc::platform_init ALIAS agentc_platform_init)
+# Create an alias for consistent naming
+add_library(agentc::platform_wrap ALIAS agentc_platform_wrap)
 
-message(STATUS "AgentC external/args: platform_init library configured")
+message(STATUS "AgentC external/args: platform_wrap library configured")
