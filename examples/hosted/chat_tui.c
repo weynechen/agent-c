@@ -99,8 +99,8 @@ typedef struct {
     int streaming_cap;
     
     /* LLM */
-    agentc_llm_client_t *llm;
-    agentc_message_t *history;
+    ac_llm_t *llm;
+    ac_message_t *history;
     const char *model_name;
     
     /* Running state */
@@ -129,13 +129,13 @@ static void app_cleanup(void) {
     
     /* Free LLM resources */
     if (g_app.history) {
-        agentc_message_free(g_app.history);
+        ac_message_free(g_app.history);
     }
     if (g_app.llm) {
-        agentc_llm_destroy(g_app.llm);
+        ac_llm_destroy(g_app.llm);
     }
     
-    agentc_cleanup();
+    ac_cleanup();
 }
 
 static void signal_handler(int sig) {
@@ -611,50 +611,7 @@ static void setup_planes(void) {
  * LLM Interaction
  *============================================================================*/
 
-static int on_stream_chunk(const char *data, size_t len, void *user_data) {
-    (void)user_data;
-    
-    /* Accumulate streaming content */
-    if (g_app.streaming_len + (int)len >= g_app.streaming_cap) {
-        g_app.streaming_cap = (g_app.streaming_len + len + 1) * 2;
-        g_app.streaming_buffer = realloc(g_app.streaming_buffer, g_app.streaming_cap);
-    }
-    
-    memcpy(g_app.streaming_buffer + g_app.streaming_len, data, len);
-    g_app.streaming_len += len;
-    g_app.streaming_buffer[g_app.streaming_len] = '\0';
-    
-    /* Update the last message (which is the streaming response) */
-    if (g_app.message_count > 0) {
-        chat_message_t *last = &g_app.messages[g_app.message_count - 1];
-        free(last->content);
-        last->content = strdup(g_app.streaming_buffer);
-        last->content_len = g_app.streaming_len;
-    }
-    
-    /* Render update */
-    render_messages();
-    render_input();
-    notcurses_render(g_app.nc);
-    
-    return g_app.running ? 0 : -1;
-}
-
-static void on_stream_done(const char *finish_reason, int total_tokens, void *user_data) {
-    (void)finish_reason;
-    (void)total_tokens;
-    (void)user_data;
-    
-    g_app.is_streaming = 0;
-    
-    /* Add to conversation history */
-    if (g_app.streaming_buffer && g_app.streaming_len > 0) {
-        agentc_message_append(&g_app.history,
-            agentc_message_create(AGENTC_ROLE_ASSISTANT, g_app.streaming_buffer));
-    }
-    
-    render_all();
-}
+/* Note: Streaming support removed - using blocking API for now */
 
 static void send_message(void) {
     if (g_app.input_len == 0 || g_app.is_streaming) return;
@@ -663,8 +620,8 @@ static void send_message(void) {
     add_message(MSG_USER, g_app.input_buffer);
     
     /* Add to conversation history */
-    agentc_message_append(&g_app.history,
-        agentc_message_create(AGENTC_ROLE_USER, g_app.input_buffer));
+    ac_message_append(&g_app.history,
+        ac_message_create(AC_ROLE_USER, g_app.input_buffer));
     
     /* Clear input */
     memset(g_app.input_buffer, 0, sizeof(g_app.input_buffer));
@@ -674,38 +631,42 @@ static void send_message(void) {
     /* Add placeholder for AI response */
     add_message(MSG_ASSISTANT, "...");
     
-    /* Start streaming */
+    /* Start processing (blocking mode for now) */
     g_app.is_streaming = 1;
-    g_app.streaming_len = 0;
-    if (g_app.streaming_buffer) {
-        g_app.streaming_buffer[0] = '\0';
-    }
-    
     render_all();
     
-    /* Build request */
-    agentc_chat_request_t req = {
-        .messages = g_app.history,
-        .temperature = 0.7f,
-    };
+    /* Perform chat completion */
+    ac_chat_response_t resp = {0};
+    agentc_err_t err = ac_llm_chat(g_app.llm, g_app.history, NULL, &resp);
     
-    /* Perform streaming request */
-    agentc_err_t err = agentc_llm_chat_stream(g_app.llm, &req,
-        on_stream_chunk, on_stream_done, NULL);
+    g_app.is_streaming = 0;
     
-    if (err != AGENTC_OK) {
+    if (err == AGENTC_OK && resp.content) {
+        /* Update last message with response */
+        if (g_app.message_count > 0) {
+            chat_message_t *last = &g_app.messages[g_app.message_count - 1];
+            free(last->content);
+            last->content = strdup(resp.content);
+            last->content_len = strlen(resp.content);
+        }
+        
+        /* Add to conversation history */
+        ac_message_append(&g_app.history,
+            ac_message_create(AC_ROLE_ASSISTANT, resp.content));
+    } else {
         /* Update last message with error */
         if (g_app.message_count > 0) {
             chat_message_t *last = &g_app.messages[g_app.message_count - 1];
             free(last->content);
             char error_msg[256];
-            snprintf(error_msg, sizeof(error_msg), "Error: %s", agentc_strerror(err));
+            snprintf(error_msg, sizeof(error_msg), "Error: %s", ac_strerror(err));
             last->content = strdup(error_msg);
             last->content_len = strlen(error_msg);
         }
-        g_app.is_streaming = 0;
-        render_all();
     }
+    
+    ac_chat_response_free(&resp);
+    render_all();
 }
 
 /*============================================================================
@@ -862,10 +823,10 @@ static void handle_input(ncinput *ni) {
         g_app.message_count = 0;
         g_app.scroll_offset = 0;
         
-        agentc_message_free(g_app.history);
+        ac_message_free(g_app.history);
         g_app.history = NULL;
-        agentc_message_append(&g_app.history,
-            agentc_message_create(AGENTC_ROLE_SYSTEM,
+        ac_message_append(&g_app.history,
+            ac_message_create(AC_ROLE_SYSTEM,
                 "You are a helpful assistant. Be concise and clear."));
         return;
     }
@@ -931,30 +892,30 @@ int main(int argc, char *argv[]) {
     signal(SIGINT, signal_handler);
     
     /* Initialize AgentC */
-    agentc_err_t err = agentc_init();
+    agentc_err_t err = ac_init();
     if (err != AGENTC_OK) {
-        AC_LOG_ERROR( "Failed to initialize AgentC: %s\n", agentc_strerror(err));
+        AC_LOG_ERROR( "Failed to initialize AgentC: %s\n", ac_strerror(err));
         return 1;
     }
     
     /* Create LLM client */
-    agentc_llm_config_t config = {
+    ac_llm_params_t params = {
         .api_key = api_key,
-        .base_url = base_url,
+        .api_base = base_url,
         .model = g_app.model_name,
         .timeout_ms = 120000,
     };
     
-    err = agentc_llm_create(&config, &g_app.llm);
-    if (err != AGENTC_OK) {
-        AC_LOG_ERROR( "Failed to create LLM client: %s\n", agentc_strerror(err));
-        agentc_cleanup();
+    g_app.llm = ac_llm_create(&params);
+    if (!g_app.llm) {
+        AC_LOG_ERROR( "Failed to create LLM client\n");
+        ac_cleanup();
         return 1;
     }
     
     /* Add system message to history */
-    agentc_message_append(&g_app.history,
-        agentc_message_create(AGENTC_ROLE_SYSTEM,
+    ac_message_append(&g_app.history,
+        ac_message_create(AC_ROLE_SYSTEM,
             "You are a helpful assistant. Be concise and clear."));
     
     /* Allocate streaming buffer */
