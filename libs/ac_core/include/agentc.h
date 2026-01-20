@@ -20,6 +20,7 @@
 #define AGENTC_H
 
 #include "agentc/platform.h"
+#include "agentc/error.h"
 #include "agentc/http_client.h"
 #include "agentc/llm.h"
 #include "agentc/tool.h"
