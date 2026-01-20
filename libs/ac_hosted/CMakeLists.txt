@@ -70,6 +70,9 @@ target_include_directories(agentc_markdown PUBLIC
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/libs/ac_core/include>
     $<INSTALL_INTERFACE:include>
 )
+target_link_libraries(agentc_markdown PUBLIC
+    ac_core::ac_core
+)
 target_compile_definitions(agentc_markdown PRIVATE
     HAVE_CONFIG_H
     PCRE2_CODE_UNIT_WIDTH=8

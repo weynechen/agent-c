@@ -9,12 +9,12 @@
  * - Resource and prompt management
  */
 
-#include <agentc/mcp.h>
-#include <agentc/log.h>
+#include "agentc/mcp.h"
+#include "agentc/log.h"
+#include "agentc.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
 /*============================================================================
  * Internal Structure
  *============================================================================*/
@@ -58,9 +58,9 @@ ac_mcp_client_t *ac_mcp_create(const ac_mcp_config_t *config) {
     client->tool_count = 0;
     
     /* Create HTTP client */
-    client->http_client = agentc_http_client_create();
-    if (!client->http_client) {
-        AC_LOG_ERROR("Failed to create HTTP client for MCP");
+    agentc_err_t err = agentc_http_client_create(NULL, &client->http_client);
+    if (err != AGENTC_OK) {
+        AC_LOG_ERROR("Failed to create HTTP client for MCP: %s", ac_strerror(err));
         free(client->server_url);
         free(client->transport);
         free(client->api_key);

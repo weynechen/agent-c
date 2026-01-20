@@ -31,6 +31,7 @@ typedef enum {
     AGENTC_ERR_IO = -10,                /* I/O operation failed */
     AGENTC_ERR_NOT_IMPLEMENTED = -11,   /* Feature not implemented */
     AGENTC_ERR_NOT_FOUND = -12,         /* Resource not found */
+    AGENTC_ERR_NOT_CONNECTED = -13,
 } agentc_err_t;
 
 #ifdef __cplusplus

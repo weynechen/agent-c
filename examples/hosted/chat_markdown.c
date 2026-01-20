@@ -16,6 +16,9 @@
 #include <unistd.h>
 #endif
 
+/* Include AgentC logging */
+#include <agentc/log.h>
+
 /* Include the markdown library */
 #include "markdown/md.h"
 

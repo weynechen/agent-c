@@ -1,28 +1,3 @@
 build
 .env
-
-                                                                                    
-                                                                                          |\      _,,,---,,_            
-                                                                                    ZZZzz /,`.-'`'    -.  ;-;;,_        
-                                                                                         |,4-  ) )-,_. ,\ (  `'-'       
-                                                                                        '---''(_/--'  `-'\_)  Weyne Chen 
-                                                                                    
-
-
-                                                                               Find file                                      f
-
-                                                                               Recent files                                   r
-
-                                                                               Grep text                                      g
-
-                                                                               Personal plan                                  p
-
-                                                                               Work plan                                      w
-
-                                                                               Config                                         c
-
-                                                                               Lazy                                           l
-
-                                                                               Quit                                           q
-
-                                                                                          ~ phases are temporary ~
+.cache

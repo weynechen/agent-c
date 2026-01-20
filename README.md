@@ -1,68 +1,68 @@
 # AgentC
 
-一个用 C 语言编写的 Agent 库。
+An Agent library written in C. Supports both hosted(windows/Linux/macos) and RTOS environments, requiring only POSIX Thread and HTTP connection dependencies.
 
-## 依赖
+## Dependencies
 
 - `cmake` (>= 3.14)
 - `libcurl`
 
-## 构建
+## Build
 
 ### Windows
 
-#### 安装依赖
+#### Install Dependencies
 
-使用 vcpkg 安装 curl：
+Install curl using vcpkg:
 
 ```powershell
 vcpkg install curl:x64-windows
 ```
 
-#### 方式1：使用 Ninja 生成器（推荐，支持 clangd）
+#### Option 1: Using Ninja Generator (Recommended, supports clangd)
 
 ```powershell
 mkdir build && cd build
-cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE=<vcpkg路径>/scripts/buildsystems/vcpkg.cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..
+cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE=<vcpkg-path>/scripts/buildsystems/vcpkg.cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..
 cmake --build . --config Release
 ```
 
-> 如果没有 Ninja，可以通过 `winget install Ninja-build.Ninja` 安装
+> If you don't have Ninja, install it via `winget install Ninja-build.Ninja`
 
-#### 方式2：使用 Visual Studio 生成器
+#### Option 2: Using Visual Studio Generator
 
 ```powershell
 mkdir build && cd build
-cmake -DCMAKE_TOOLCHAIN_FILE=<vcpkg路径>/scripts/buildsystems/vcpkg.cmake ..
+cmake -DCMAKE_TOOLCHAIN_FILE=<vcpkg-path>/scripts/buildsystems/vcpkg.cmake ..
 cmake --build . --config Release
 ```
 
 ### Linux/macOS
 
 ```bash
-# 安装依赖 (Ubuntu/Debian)
+# Install dependencies (Ubuntu/Debian)
 sudo apt install libcurl4-openssl-dev
 
-# 构建
+# Build
 mkdir build && cd build
 cmake ..
 make -j$(nproc)
 ```
 
-## 运行示例
+## Run Examples
 
 ```bash
 cd build/Release  # Windows
-# 或
+# or
 cd build          # Linux/macOS
 
-# 设置环境变量（或创建 .env 文件）
+# Set environment variables (or create a .env file)
 # OPENAI_API_KEY=your-api-key
-# OPENAI_BASE_URL=https://api.openai.com/v1  # 可选
-# OPENAI_MODEL=gpt-4o-mini                   # 可选
+# OPENAI_BASE_URL=https://api.openai.com/v1  # Optional
+# OPENAI_MODEL=gpt-4o-mini                   # Optional
 
-# 运行 demo
+# Run demos
 ./chat_demo
 ./chat_markdown
-./chat_tools "计算 199*89"
+./chat_tools "compute 199*89"
 ```

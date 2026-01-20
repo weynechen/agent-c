@@ -51,6 +51,7 @@ const char *ac_strerror(agentc_err_t err) {
         case AGENTC_ERR_IO:              return "I/O operation failed";
         case AGENTC_ERR_NOT_IMPLEMENTED: return "Feature not implemented";
         case AGENTC_ERR_NOT_FOUND:       return "Resource not found";
+        case AGENTC_ERR_NOT_CONNECTED:   return "Not connected";
         default:                         return "Unknown error";
     }
 }

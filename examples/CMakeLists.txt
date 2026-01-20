@@ -40,7 +40,10 @@ endif()
 
 # Example 3: Markdown rendering demo
 add_executable(chat_markdown hosted/chat_markdown.c)
-target_link_libraries(chat_markdown PRIVATE agentc_markdown)
+target_link_libraries(chat_markdown PRIVATE
+    ac_core::ac_core
+    agentc_markdown
+)
 target_include_directories(chat_markdown PRIVATE
     ${CMAKE_SOURCE_DIR}/libs/ac_hosted/src
 )
