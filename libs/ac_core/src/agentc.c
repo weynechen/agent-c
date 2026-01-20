@@ -48,6 +48,9 @@ const char *ac_strerror(agentc_err_t err) {
         case AGENTC_ERR_HTTP:            return "HTTP error";
         case AGENTC_ERR_NOT_INITIALIZED: return "Not initialized";
         case AGENTC_ERR_BACKEND:         return "Backend error";
+        case AGENTC_ERR_IO:              return "I/O operation failed";
+        case AGENTC_ERR_NOT_IMPLEMENTED: return "Feature not implemented";
+        case AGENTC_ERR_NOT_FOUND:       return "Resource not found";
         default:                         return "Unknown error";
     }
 }

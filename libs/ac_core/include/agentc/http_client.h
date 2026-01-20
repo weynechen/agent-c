@@ -11,27 +11,11 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "error.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/*============================================================================
- * Error Codes
- *============================================================================*/
-
-typedef enum {
-    AGENTC_OK = 0,
-    AGENTC_ERR_INVALID_ARG = -1,
-    AGENTC_ERR_NO_MEMORY = -2,
-    AGENTC_ERR_NETWORK = -3,
-    AGENTC_ERR_TLS = -4,
-    AGENTC_ERR_TIMEOUT = -5,
-    AGENTC_ERR_DNS = -6,
-    AGENTC_ERR_HTTP = -7,
-    AGENTC_ERR_NOT_INITIALIZED = -8,
-    AGENTC_ERR_BACKEND = -9,
-} agentc_err_t;
 
 /*============================================================================
  * HTTP Method
