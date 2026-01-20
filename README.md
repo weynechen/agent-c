@@ -5,6 +5,8 @@ An Agent library written in C. Supports both hosted(windows/Linux/macos) and RTO
 ## Dependencies
 
 - `cmake` (>= 3.14)
+
+hosted:
 - `libcurl`
 
 ## Build
