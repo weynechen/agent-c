@@ -12,9 +12,10 @@
 
 #include "agentc/log.h"
 #include "agentc/platform.h"
-#include "agentc/http_client.h"
-#include "llm_provider.h"
-#include "llm_internal.h"
+#include "http_client.h"
+#include "../llm_provider.h"
+#include "../llm_internal.h"
+#include "../message/message_json.h"
 #include "cJSON.h"
 #include <string.h>
 #include <stdio.h>
@@ -99,8 +100,10 @@ static agentc_err_t openai_chat(
     
     /* Add user messages */
     for (const ac_message_t* msg = messages; msg; msg = msg->next) {
-        cJSON* msg_obj = build_message_json(msg);
-        cJSON_AddItemToArray(msgs_arr, msg_obj);
+        cJSON* msg_obj = ac_message_to_json(msg);
+        if (msg_obj) {
+            cJSON_AddItemToArray(msgs_arr, msg_obj);
+        }
     }
     
     /* Temperature */
@@ -181,7 +184,7 @@ static agentc_err_t openai_chat(
     
     /* Parse response */
     AC_LOG_DEBUG("OpenAI response: %s", http_resp.body);
-    err = parse_chat_response(http_resp.body, response);
+    err = ac_chat_response_parse(http_resp.body, response);
     
     agentc_http_response_free(&http_resp);
     return err;

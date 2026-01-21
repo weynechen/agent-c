@@ -13,8 +13,9 @@
 
 #include <agentc/platform.h>
 #include <agentc/tool.h>
-#include <agentc/http_client.h>
+#include <agentc/error.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {

@@ -9,6 +9,8 @@
 #ifndef AGENTC_LLM_H
 #define AGENTC_LLM_H
 
+#include <stdint.h>
+#include "error.h"
 #include "memory.h"
 
 #ifdef __cplusplus

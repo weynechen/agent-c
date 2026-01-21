@@ -10,7 +10,8 @@
 #ifndef AGENTC_MEMORY_H
 #define AGENTC_MEMORY_H
 
-#include "http_client.h"
+#include "platform.h"
+#include "error.h"
 #include <stddef.h>
 
 #ifdef __cplusplus

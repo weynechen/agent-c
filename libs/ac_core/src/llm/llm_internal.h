@@ -8,7 +8,6 @@
 
 #include "agentc/llm.h"
 #include "agentc/tool.h"
-#include "agentc/http_client.h"
 #include "llm_provider.h"
 #include "cJSON.h"
 
@@ -41,13 +40,9 @@ struct ac_llm {
     char *organization_copy;
 };
 
-/**
- * @brief Build message JSON object
- * 
- * @param msg Message to convert
- * @return cJSON object (caller must delete)
- */
-cJSON* build_message_json(const ac_message_t* msg);
+/*============================================================================
+ * Request Building (used by providers)
+ *============================================================================*/
 
 /**
  * @brief Build chat request JSON
@@ -64,25 +59,16 @@ char* build_chat_request_json(
 );
 
 /**
- * @brief Parse tool calls from JSON array
- * 
- * @param tool_calls_arr cJSON array of tool calls
- * @return Tool call list (caller must free)
- */
-ac_tool_call_t* parse_tool_calls(cJSON* tool_calls_arr);
-
-/**
  * @brief Parse chat response JSON
  * 
  * @param json Response JSON string
- * @param response Output response structure
- * @return AGENTC_OK on success
+ * @param response Output response structure (must be zero-initialized)
+ * @return AGENTC_OK on success, error code otherwise
  */
-agentc_err_t parse_chat_response(
+agentc_err_t ac_chat_response_parse(
     const char* json,
     ac_chat_response_t* response
 );
-
 
 #ifdef __cplusplus
 }

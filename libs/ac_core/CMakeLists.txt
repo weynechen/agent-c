@@ -8,10 +8,14 @@ set(AGENTC_CORE_SOURCES
     src/agentc.c
     src/agent.c
     src/llm/llm.c
+    src/llm/message/message.c
+    src/llm/message/message_json.c
+    src/llm/tool_call/tool_call.c
+    src/llm/tool_call/tool_call_json.c
     src/tool.c
-    src/memory.c
-    src/http_client.c
+    src/memory/memory.c
     src/log.c
+    port/http_client.c
 )
 
 # Platform-specific port layer (log + HTTP backend)
@@ -53,6 +57,12 @@ target_include_directories(ac_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
     $<BUILD_INTERFACE:${CJSON_DIR}>
+)
+
+# Private include directories (internal use only)
+target_include_directories(ac_core PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/port    # Port layer headers (http_client.h, etc.)
 )
 
 # Private includes (for internal headers)

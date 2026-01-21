@@ -9,6 +9,7 @@
 #ifndef AGENTC_LOG_H
 #define AGENTC_LOG_H
 
+#include "platform.h"
 #include <stdarg.h>
 
 #ifdef __cplusplus
@@ -83,9 +84,15 @@ void ac_log_info(const char* file, int line, const char* func, const char* fmt, 
 void ac_log_debug(const char* file, int line, const char* func, const char* fmt, ...);
 
 /**
- * @brief Logging macros (preferred interface)
+ * @brief Logging macros (unified interface for all platforms)
  * 
  * These macros automatically capture file, line, and function information.
+ * The implementation calls platform-specific handlers via ac_log_platform_default_handler.
+ * 
+ * Platform implementations:
+ * - POSIX: File logging with colors (port/posix/log_posix.c)
+ * - Windows: Console with colors (port/windows/log_windows.c)
+ * - FreeRTOS: UART/Serial (port/freertos/log_freertos.c)
  * 
  * Example usage:
  * @code

@@ -5,6 +5,7 @@
 
 #include "agentc/memory.h"
 #include "agentc/llm.h"
+#include "agentc/log.h"
 #include "agentc/platform.h"
 #include <string.h>
 

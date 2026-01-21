@@ -12,6 +12,7 @@
 #include "agentc/mcp.h"
 #include "agentc/log.h"
 #include "agentc.h"
+#include "http_client.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

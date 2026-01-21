@@ -9,9 +9,11 @@
 #include "agentc/log.h"
 #include "agentc/platform.h"
 #include "agentc/tool.h"
-#include "agentc/http_client.h"
-#include "llm_provider.h"
-#include "llm_internal.h"
+#include "http_client.h"
+#include "../llm_provider.h"
+#include "../llm_internal.h"
+#include "../message/message.h"
+#include "../message/message_json.h"
 #include "cJSON.h"
 #include <string.h>
 #include <stdio.h>
@@ -89,8 +91,10 @@ static char* build_anthropic_request_json(
             continue;  // Skip system messages (handled separately)
         }
         
-        cJSON* msg_obj = build_message_json(msg);
-        cJSON_AddItemToArray(msgs_arr, msg_obj);
+        cJSON* msg_obj = ac_message_to_json(msg);
+        if (msg_obj) {
+            cJSON_AddItemToArray(msgs_arr, msg_obj);
+        }
     }
     
     /* Temperature */
@@ -196,7 +200,7 @@ static agentc_err_t anthropic_chat(
     
     // TODO: Implement Anthropic-specific response parsing if format differs significantly
     // For now, try OpenAI parser (may need adjustment)
-    err = parse_chat_response(http_resp.body, response);
+    err = ac_chat_response_parse(http_resp.body, response);
     
     agentc_http_response_free(&http_resp);
     return err;

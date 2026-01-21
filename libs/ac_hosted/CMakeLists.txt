@@ -87,6 +87,11 @@ target_include_directories(ac_hosted PUBLIC
     $<INSTALL_INTERFACE:include>
 )
 
+# Private includes for accessing ac_core port layer
+target_include_directories(ac_hosted PRIVATE
+    ${CMAKE_SOURCE_DIR}/libs/ac_core/port    # HTTP client and other port abstractions
+)
+
 target_link_libraries(ac_hosted PUBLIC
     ac_core::ac_core
 )

@@ -8,124 +8,19 @@
 #include "agentc/platform.h"
 #include "agentc/log.h"
 #include "llm_internal.h"
+#include "message/message.h"
+#include "message/message_json.h"
+#include "tool_call/tool_call.h"
+#include "tool_call/tool_call_json.h"
 #include "cJSON.h"
 #include <string.h>
 #include <stdio.h>
 
+#define DEFAULT_PROVIDER "openai"
 #define DEFAULT_BASE_URL "https://api.openai.com/v1"
 #define DEFAULT_MODEL "gpt-3.5-turbo"
 #define DEFAULT_TIMEOUT_MS 60000
 #define DEFAULT_TEMPERATURE 0.7f
-
-/*============================================================================
- * Role Helpers
- *============================================================================*/
-
-const char *ac_role_to_string(ac_role_t role) {
-    switch (role) {
-        case AC_ROLE_SYSTEM:    return "system";
-        case AC_ROLE_USER:      return "user";
-        case AC_ROLE_ASSISTANT: return "assistant";
-        case AC_ROLE_TOOL:      return "tool";
-        default:                return "user";
-    }
-}
-
-/*============================================================================
- * Message Helpers
- *============================================================================*/
-
-ac_message_t *ac_message_create(ac_role_t role, const char *content) {
-    ac_message_t *msg = AGENTC_CALLOC(1, sizeof(ac_message_t));
-    if (!msg) return NULL;
-
-    msg->role = role;
-    msg->content = content ? AGENTC_STRDUP(content) : NULL;
-    msg->next = NULL;
-
-    return msg;
-}
-
-ac_message_t *ac_message_create_tool_result(
-    const char *tool_call_id,
-    const char *content
-) {
-    if (!tool_call_id) return NULL;
-
-    ac_message_t *msg = AGENTC_CALLOC(1, sizeof(ac_message_t));
-    if (!msg) return NULL;
-
-    msg->role = AC_ROLE_TOOL;
-    msg->content = content ? AGENTC_STRDUP(content) : NULL;
-    msg->tool_call_id = AGENTC_STRDUP(tool_call_id);
-    msg->next = NULL;
-
-    if (!msg->tool_call_id) {
-        AGENTC_FREE(msg->content);
-        AGENTC_FREE(msg);
-        return NULL;
-    }
-
-    return msg;
-}
-
-ac_message_t *ac_message_create_assistant_tool_calls(
-    const char *content,
-    ac_tool_call_t *tool_calls
-) {
-    ac_message_t *msg = AGENTC_CALLOC(1, sizeof(ac_message_t));
-    if (!msg) return NULL;
-
-    msg->role = AC_ROLE_ASSISTANT;
-    msg->content = content ? AGENTC_STRDUP(content) : NULL;
-    msg->tool_calls = tool_calls;  /* Takes ownership */
-    msg->next = NULL;
-
-    return msg;
-}
-
-void ac_message_append(ac_message_t **list, ac_message_t *message) {
-    if (!list || !message) return;
-
-    if (!*list) {
-        *list = message;
-        return;
-    }
-
-    ac_message_t *tail = *list;
-    while (tail->next) {
-        tail = tail->next;
-    }
-    tail->next = message;
-}
-
-void ac_message_free(ac_message_t *list) {
-    while (list) {
-        ac_message_t *next = list->next;
-        AGENTC_FREE(list->content);
-        AGENTC_FREE(list->name);
-        AGENTC_FREE(list->tool_call_id);
-        ac_tool_call_free(list->tool_calls);
-        AGENTC_FREE(list);
-        list = next;
-    }
-}
-
-/*============================================================================
- * Response Helpers
- *============================================================================*/
-
-void ac_chat_response_free(ac_chat_response_t *response) {
-    if (!response) return;
-
-    AGENTC_FREE(response->id);
-    AGENTC_FREE(response->model);
-    AGENTC_FREE(response->content);
-    AGENTC_FREE(response->finish_reason);
-    ac_tool_call_free(response->tool_calls);
-
-    memset(response, 0, sizeof(*response));
-}
 
 /*============================================================================
  * Client Create/Destroy
@@ -290,7 +185,6 @@ void ac_llm_register_provider(const char *name, const ac_llm_ops_t *ops) {
     s_providers[s_provider_count].ops = ops;
     s_provider_count++;
     
-    printf("Provider name %s\n",name);
     AC_LOG_DEBUG("Provider registered: %s", name);
 }
 
@@ -345,50 +239,6 @@ const ac_llm_ops_t* ac_llm_find_provider(const ac_llm_params_t* params) {
 }
 
 /*============================================================================
- * Build Message JSON with Tool Calls Support
- *============================================================================*/
-
-cJSON *build_message_json(const ac_message_t *msg) {
-    cJSON *msg_obj = cJSON_CreateObject();
-    cJSON_AddStringToObject(msg_obj, "role", ac_role_to_string(msg->role));
-
-    /* Handle content */
-    if (msg->content) {
-        cJSON_AddStringToObject(msg_obj, "content", msg->content);
-    } else if (msg->role == AC_ROLE_ASSISTANT && msg->tool_calls) {
-        /* Assistant with tool_calls but no content - add null */
-        cJSON_AddNullToObject(msg_obj, "content");
-    }
-
-    /* Handle tool message */
-    if (msg->role == AC_ROLE_TOOL && msg->tool_call_id) {
-        cJSON_AddStringToObject(msg_obj, "tool_call_id", msg->tool_call_id);
-    }
-
-    /* Handle assistant tool_calls */
-    if (msg->role == AC_ROLE_ASSISTANT && msg->tool_calls) {
-        cJSON *tool_calls_arr = cJSON_CreateArray();
-
-        for (const ac_tool_call_t *tc = msg->tool_calls; tc; tc = tc->next) {
-            cJSON *tc_obj = cJSON_CreateObject();
-            cJSON_AddStringToObject(tc_obj, "id", tc->id);
-            cJSON_AddStringToObject(tc_obj, "type", "function");
-
-            cJSON *func = cJSON_CreateObject();
-            cJSON_AddStringToObject(func, "name", tc->name);
-            cJSON_AddStringToObject(func, "arguments", tc->arguments ? tc->arguments : "{}");
-            cJSON_AddItemToObject(tc_obj, "function", func);
-
-            cJSON_AddItemToArray(tool_calls_arr, tc_obj);
-        }
-
-        cJSON_AddItemToObject(msg_obj, "tool_calls", tool_calls_arr);
-    }
-
-    return msg_obj;
-}
-
-/*============================================================================
  * Build Request JSON (used by providers)
  *============================================================================*/
 
@@ -416,8 +266,10 @@ char *build_chat_request_json(
     
     /* Add user messages */
     for (const ac_message_t *msg = messages; msg; msg = msg->next) {
-        cJSON *msg_obj = build_message_json(msg);
-        cJSON_AddItemToArray(msgs_arr, msg_obj);
+        cJSON *msg_obj = ac_message_to_json(msg);
+        if (msg_obj) {
+            cJSON_AddItemToArray(msgs_arr, msg_obj);
+        }
     }
 
     /* Temperature */
@@ -451,153 +303,6 @@ char *build_chat_request_json(
     cJSON_Delete(root);
 
     return json_str;
-}
-
-/*============================================================================
- * Parse Tool Calls from Response (used by providers)
- *============================================================================*/
-
-ac_tool_call_t *parse_tool_calls(cJSON *tool_calls_arr) {
-    if (!tool_calls_arr || !cJSON_IsArray(tool_calls_arr)) {
-        return NULL;
-    }
-
-    ac_tool_call_t *head = NULL;
-    ac_tool_call_t *tail = NULL;
-
-    int size = cJSON_GetArraySize(tool_calls_arr);
-    for (int i = 0; i < size; i++) {
-        cJSON *tc = cJSON_GetArrayItem(tool_calls_arr, i);
-        if (!tc) continue;
-
-        cJSON *id = cJSON_GetObjectItem(tc, "id");
-        cJSON *func = cJSON_GetObjectItem(tc, "function");
-
-        if (!func) continue;
-
-        cJSON *name = cJSON_GetObjectItem(func, "name");
-        cJSON *args = cJSON_GetObjectItem(func, "arguments");
-
-        ac_tool_call_t *call = AGENTC_CALLOC(1, sizeof(ac_tool_call_t));
-        if (!call) {
-            ac_tool_call_free(head);
-            return NULL;
-        }
-
-        call->id = (id && cJSON_IsString(id)) ? AGENTC_STRDUP(id->valuestring) : NULL;
-        call->name = (name && cJSON_IsString(name)) ? AGENTC_STRDUP(name->valuestring) : NULL;
-        call->arguments = (args && cJSON_IsString(args)) ? AGENTC_STRDUP(args->valuestring) : NULL;
-        call->next = NULL;
-
-        if (!head) {
-            head = call;
-            tail = call;
-        } else {
-            tail->next = call;
-            tail = call;
-        }
-    }
-
-    return head;
-}
-
-/*============================================================================
- * Parse Response JSON (used by providers)
- *============================================================================*/
-
-agentc_err_t parse_chat_response(
-    const char *json,
-    ac_chat_response_t *response
-) {
-    if (!json || !response) {
-        return AGENTC_ERR_INVALID_ARG;
-    }
-
-    memset(response, 0, sizeof(*response));
-
-    cJSON *root = cJSON_Parse(json);
-    if (!root) {
-        AC_LOG_ERROR("Failed to parse JSON response");
-        return AGENTC_ERR_HTTP;
-    }
-
-    /* Check for error */
-    cJSON *error = cJSON_GetObjectItem(root, "error");
-    if (error) {
-        cJSON *msg = cJSON_GetObjectItem(error, "message");
-        if (msg && cJSON_IsString(msg)) {
-            AC_LOG_ERROR("API error: %s", msg->valuestring);
-        }
-        cJSON_Delete(root);
-        return AGENTC_ERR_HTTP;
-    }
-
-    /* Parse id and model */
-    cJSON *id = cJSON_GetObjectItem(root, "id");
-    if (id && cJSON_IsString(id)) {
-        response->id = AGENTC_STRDUP(id->valuestring);
-    }
-
-    cJSON *model = cJSON_GetObjectItem(root, "model");
-    if (model && cJSON_IsString(model)) {
-        response->model = AGENTC_STRDUP(model->valuestring);
-    }
-
-    /* Parse choices[0] */
-    cJSON *choices = cJSON_GetObjectItem(root, "choices");
-    if (choices && cJSON_IsArray(choices) && cJSON_GetArraySize(choices) > 0) {
-        cJSON *first_choice = cJSON_GetArrayItem(choices, 0);
-        if (first_choice) {
-            cJSON *message = cJSON_GetObjectItem(first_choice, "message");
-            if (message) {
-                /* Content */
-                cJSON *content = cJSON_GetObjectItem(message, "content");
-                if (content && cJSON_IsString(content)) {
-                    response->content = AGENTC_STRDUP(content->valuestring);
-                }
-
-                /* Tool calls */
-                cJSON *tool_calls = cJSON_GetObjectItem(message, "tool_calls");
-                if (tool_calls && cJSON_IsArray(tool_calls)) {
-                    response->tool_calls = parse_tool_calls(tool_calls);
-                }
-            }
-
-            /* Finish reason */
-            cJSON *finish_reason = cJSON_GetObjectItem(first_choice, "finish_reason");
-            if (finish_reason && cJSON_IsString(finish_reason)) {
-                response->finish_reason = AGENTC_STRDUP(finish_reason->valuestring);
-            }
-        }
-    }
-
-    /* Parse usage */
-    cJSON *usage = cJSON_GetObjectItem(root, "usage");
-    if (usage) {
-        cJSON *prompt_tokens = cJSON_GetObjectItem(usage, "prompt_tokens");
-        if (prompt_tokens && cJSON_IsNumber(prompt_tokens)) {
-            response->prompt_tokens = (int)prompt_tokens->valuedouble;
-        }
-
-        cJSON *completion_tokens = cJSON_GetObjectItem(usage, "completion_tokens");
-        if (completion_tokens && cJSON_IsNumber(completion_tokens)) {
-            response->completion_tokens = (int)completion_tokens->valuedouble;
-        }
-
-        cJSON *total_tokens = cJSON_GetObjectItem(usage, "total_tokens");
-        if (total_tokens && cJSON_IsNumber(total_tokens)) {
-            response->total_tokens = (int)total_tokens->valuedouble;
-        }
-    }
-
-    cJSON_Delete(root);
-
-    /* Consider success if we have content OR tool_calls */
-    if (response->content || response->tool_calls) {
-        return AGENTC_OK;
-    }
-
-    return AGENTC_ERR_HTTP;
 }
 
 /*============================================================================
@@ -663,34 +368,116 @@ agentc_err_t ac_llm_complete(
 }
 
 /*============================================================================
- * Tool Call Clone
+ * Chat Response Management
  *============================================================================*/
 
-ac_tool_call_t *ac_tool_call_clone(const ac_tool_call_t *calls) {
-    if (!calls) return NULL;
+void ac_chat_response_free(ac_chat_response_t *response) {
+    if (!response) return;
 
-    ac_tool_call_t *head = NULL;
-    ac_tool_call_t *tail = NULL;
+    AGENTC_FREE(response->id);
+    AGENTC_FREE(response->model);
+    AGENTC_FREE(response->content);
+    AGENTC_FREE(response->finish_reason);
+    ac_tool_call_free(response->tool_calls);
 
-    for (const ac_tool_call_t *src = calls; src; src = src->next) {
-        ac_tool_call_t *clone = AGENTC_CALLOC(1, sizeof(ac_tool_call_t));
-        if (!clone) {
-            ac_tool_call_free(head);
-            return NULL;
+    memset(response, 0, sizeof(*response));
 }
 
-        clone->id = src->id ? AGENTC_STRDUP(src->id) : NULL;
-        clone->name = src->name ? AGENTC_STRDUP(src->name) : NULL;
-        clone->arguments = src->arguments ? AGENTC_STRDUP(src->arguments) : NULL;
+/*============================================================================
+ * Chat Response Parsing
+ *============================================================================*/
 
-        if (!head) {
-            head = clone;
-            tail = clone;
-        } else {
-            tail->next = clone;
-            tail = clone;
+agentc_err_t ac_chat_response_parse(
+    const char *json,
+    ac_chat_response_t *response
+) {
+    if (!json || !response) {
+        return AGENTC_ERR_INVALID_ARG;
+    }
+
+    memset(response, 0, sizeof(*response));
+
+    cJSON *root = cJSON_Parse(json);
+    if (!root) {
+        AC_LOG_ERROR("Failed to parse JSON response");
+        return AGENTC_ERR_HTTP;
+    }
+
+    /* Check for error */
+    cJSON *error = cJSON_GetObjectItem(root, "error");
+    if (error) {
+        cJSON *msg = cJSON_GetObjectItem(error, "message");
+        if (msg && cJSON_IsString(msg)) {
+            AC_LOG_ERROR("API error: %s", msg->valuestring);
+        }
+        cJSON_Delete(root);
+        return AGENTC_ERR_HTTP;
+    }
+
+    /* Parse id and model */
+    cJSON *id = cJSON_GetObjectItem(root, "id");
+    if (id && cJSON_IsString(id)) {
+        response->id = AGENTC_STRDUP(id->valuestring);
+    }
+
+    cJSON *model = cJSON_GetObjectItem(root, "model");
+    if (model && cJSON_IsString(model)) {
+        response->model = AGENTC_STRDUP(model->valuestring);
+    }
+
+    /* Parse choices[0] */
+    cJSON *choices = cJSON_GetObjectItem(root, "choices");
+    if (choices && cJSON_IsArray(choices) && cJSON_GetArraySize(choices) > 0) {
+        cJSON *first_choice = cJSON_GetArrayItem(choices, 0);
+        if (first_choice) {
+            cJSON *message = cJSON_GetObjectItem(first_choice, "message");
+            if (message) {
+                /* Content */
+                cJSON *content = cJSON_GetObjectItem(message, "content");
+                if (content && cJSON_IsString(content)) {
+                    response->content = AGENTC_STRDUP(content->valuestring);
+                }
+
+                /* Tool calls */
+                cJSON *tool_calls = cJSON_GetObjectItem(message, "tool_calls");
+                if (tool_calls && cJSON_IsArray(tool_calls)) {
+                    response->tool_calls = ac_tool_call_parse_json(tool_calls);
+                }
+            }
+
+            /* Finish reason */
+            cJSON *finish_reason = cJSON_GetObjectItem(first_choice, "finish_reason");
+            if (finish_reason && cJSON_IsString(finish_reason)) {
+                response->finish_reason = AGENTC_STRDUP(finish_reason->valuestring);
+            }
         }
     }
 
-    return head;
+    /* Parse usage */
+    cJSON *usage = cJSON_GetObjectItem(root, "usage");
+    if (usage) {
+        cJSON *prompt_tokens = cJSON_GetObjectItem(usage, "prompt_tokens");
+        if (prompt_tokens && cJSON_IsNumber(prompt_tokens)) {
+            response->prompt_tokens = (int)prompt_tokens->valuedouble;
+        }
+
+        cJSON *completion_tokens = cJSON_GetObjectItem(usage, "completion_tokens");
+        if (completion_tokens && cJSON_IsNumber(completion_tokens)) {
+            response->completion_tokens = (int)completion_tokens->valuedouble;
+        }
+
+        cJSON *total_tokens = cJSON_GetObjectItem(usage, "total_tokens");
+        if (total_tokens && cJSON_IsNumber(total_tokens)) {
+            response->total_tokens = (int)total_tokens->valuedouble;
+        }
+    }
+
+    cJSON_Delete(root);
+
+    /* Consider success if we have content OR tool_calls */
+    if (response->content || response->tool_calls) {
+        return AGENTC_OK;
+    }
+
+    return AGENTC_ERR_HTTP;
 }

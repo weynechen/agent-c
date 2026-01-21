@@ -12,7 +12,7 @@
 #define AGENTC_TOOL_H
 
 #include "platform.h"
-#include "http_client.h"
+#include "error.h"
 #include <stddef.h>
 
 #ifdef __cplusplus
