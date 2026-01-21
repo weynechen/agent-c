@@ -9,6 +9,7 @@
 #include "agentc/log.h"
 #include "agentc/platform.h"
 #include "agentc/tool.h"
+#include "agentc/http_client.h"
 #include "llm_provider.h"
 #include "llm_internal.h"
 #include "cJSON.h"
@@ -18,24 +19,38 @@
 #define ANTHROPIC_API_VERSION "2023-06-01"
 
 /**
- * @brief Check if this provider can handle the request
+ * @brief Anthropic provider private data
  */
-static int anthropic_can_handle(const ac_llm_params_t* params) {
+typedef struct {
+    agentc_http_client_t *http;
+} anthropic_priv_t;
+
+/**
+ * @brief Create Anthropic provider private data
+ */
+static void* anthropic_create(const ac_llm_params_t* params) {
     if (!params) {
-        return 0;
+        return NULL;
     }
     
-    // Check by API base URL
-    if (params->api_base && strstr(params->api_base, "anthropic.com")) {
-        return 1;
+    anthropic_priv_t* priv = AGENTC_CALLOC(1, sizeof(anthropic_priv_t));
+    if (!priv) {
+        return NULL;
     }
     
-    // Check by model name
-    if (params->model && strstr(params->model, "claude")) {
-        return 1;
+    /* Create HTTP client */
+    agentc_http_client_config_t config = {
+        .default_timeout_ms = params->timeout_ms,
+    };
+    
+    agentc_err_t err = agentc_http_client_create(&config, &priv->http);
+    if (err != AGENTC_OK) {
+        AGENTC_FREE(priv);
+        return NULL;
     }
     
-    return 0;
+    AC_LOG_DEBUG("Anthropic provider initialized");
+    return priv;
 }
 
 /**
@@ -47,11 +62,10 @@ static int anthropic_can_handle(const ac_llm_params_t* params) {
  * - uses "anthropic-version" header
  */
 static char* build_anthropic_request_json(
-    const ac_llm_t* llm,
+    const ac_llm_params_t* params,
     const ac_message_t* messages,
     const char* tools
 ) {
-    const ac_llm_params_t* params = ac_llm_get_params(llm);
     
     cJSON* root = cJSON_CreateObject();
     if (!root) return NULL;
@@ -112,17 +126,18 @@ static char* build_anthropic_request_json(
  * @brief Perform chat completion
  */
 static agentc_err_t anthropic_chat(
-    ac_llm_t* llm,
+    void* priv_data,
+    const ac_llm_params_t* params,
     const ac_message_t* messages,
     const char* tools,
     ac_chat_response_t* response
 ) {
-    const ac_llm_params_t* params = ac_llm_get_params(llm);
-    agentc_http_client_t* http = ac_llm_get_http_client(llm);
-    
-    if (!params || !http) {
+    if (!priv_data || !params) {
         return AGENTC_ERR_INVALID_ARG;
     }
+    
+    anthropic_priv_t* priv = (anthropic_priv_t*)priv_data;
+    agentc_http_client_t* http = priv->http;
     
     /* Build URL */
     const char* base = params->api_base ? params->api_base : "https://api.anthropic.com";
@@ -130,7 +145,7 @@ static agentc_err_t anthropic_chat(
     snprintf(url, sizeof(url), "%s/v1/messages", base);
     
     /* Build request body */
-    char* body = build_anthropic_request_json(llm, messages, tools);
+    char* body = build_anthropic_request_json(params, messages, tools);
     if (!body) {
         return AGENTC_ERR_NO_MEMORY;
     }
@@ -188,10 +203,26 @@ static agentc_err_t anthropic_chat(
 }
 
 /**
+ * @brief Cleanup Anthropic provider private data
+ */
+static void anthropic_cleanup(void* priv_data) {
+    if (!priv_data) {
+        return;
+    }
+    
+    anthropic_priv_t* priv = (anthropic_priv_t*)priv_data;
+    agentc_http_client_destroy(priv->http);
+    AGENTC_FREE(priv);
+    
+    AC_LOG_DEBUG("Anthropic provider cleaned up");
+}
+
+/**
  * @brief Anthropic provider definition
  */
-const ac_llm_provider_t ac_provider_anthropic = {
+const ac_llm_ops_t ac_provider_anthropic = {
     .name = "Anthropic",
-    .can_handle = anthropic_can_handle,
+    .create = anthropic_create,
     .chat = anthropic_chat,
+    .cleanup = anthropic_cleanup,
 };

@@ -28,9 +28,10 @@ extern "C" {
  */
 struct ac_llm {
     ac_llm_params_t params;
-    agentc_http_client_t *http;
-    const ac_llm_provider_t *provider;  /* Provider implementation */
-    /* Owned copies */
+    const ac_llm_ops_t *ops;  /* Provider operations (bound at creation) */
+    void *priv;                /* Provider private data (allocated by provider) */
+    
+    /* Owned copies of string parameters */
     char *model_copy;
     char *api_key_copy;
     char *api_base_copy;
@@ -80,27 +81,6 @@ agentc_err_t parse_chat_response(
     ac_chat_response_t* response
 );
 
-/**
- * @brief Get HTTP client from LLM
- * 
- * Providers need access to the HTTP client to make requests.
- * 
- * @param llm LLM client
- * @return HTTP client handle
- */
-static inline agentc_http_client_t* ac_llm_get_http_client(const ac_llm_t* llm) {
-    return llm ? llm->http : NULL;
-}
-
-/**
- * @brief Get parameters from LLM
- * 
- * @param llm LLM client
- * @return Parameters structure
- */
-static inline const ac_llm_params_t* ac_llm_get_params(const ac_llm_t* llm) {
-    return llm ? &llm->params : NULL;
-}
 
 #ifdef __cplusplus
 }
