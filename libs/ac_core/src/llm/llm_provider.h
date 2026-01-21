@@ -66,20 +66,59 @@ typedef struct ac_llm_ops {
 } ac_llm_ops_t;
 
 /**
- * @brief Built-in providers
+ * @brief Register a provider (called by provider modules)
+ * 
+ * Providers use AC_PROVIDER_REGISTER macro to auto-register at startup.
+ * 
+ * @param name Provider name (e.g., "openai", "anthropic")
+ * @param ops Provider operations
  */
-extern const ac_llm_ops_t ac_provider_openai;
-extern const ac_llm_ops_t ac_provider_anthropic;
+void ac_llm_register_provider(const char *name, const ac_llm_ops_t *ops);
+
+/**
+ * @brief Find provider by name
+ * 
+ * @param name Provider name
+ * @return Provider operations, or NULL if not found
+ */
+const ac_llm_ops_t* ac_llm_find_provider_by_name(const char *name);
 
 /**
  * @brief Find the appropriate provider for given parameters
  * 
- * Checks model name and api_base to determine which provider to use.
+ * Selection logic:
+ * 1. If params->provider is set, use it directly
+ * 2. If params->compatible is set, use that provider
+ * 3. Otherwise, auto-detect based on model/api_base
  * 
  * @param params LLM parameters
  * @return Provider operations, or NULL if none found
  */
 const ac_llm_ops_t* ac_llm_find_provider(const ac_llm_params_t* params);
+
+/**
+ * @brief Auto-registration macro (constructor pattern)
+ * 
+ * Usage in provider file:
+ * @code
+ * static const ac_llm_ops_t openai_ops = { ... };
+ * AC_PROVIDER_REGISTER(openai, &openai_ops);
+ * @endcode
+ */
+#if defined(_MSC_VER)
+    #define PROVIDER_CONSTRUCTOR __pragma(section(".CRT$XCT")) \
+        __declspec(allocate(".CRT$XCT"))
+    #define PROVIDER_CALL_CONSTRUCTOR(f) \
+        PROVIDER_CONSTRUCTOR static void (__cdecl *f##_)(void) = f;
+#else
+    #define PROVIDER_CALL_CONSTRUCTOR(f) \
+        __attribute__((constructor)) static void f(void)
+#endif
+
+#define AC_PROVIDER_REGISTER(name, ops) \
+    PROVIDER_CALL_CONSTRUCTOR(ac_register_provider_##name) { \
+        ac_llm_register_provider(#name, ops); \
+    }
 
 #ifdef __cplusplus
 }

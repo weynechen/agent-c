@@ -9,7 +9,6 @@
 #ifndef AGENTC_LLM_H
 #define AGENTC_LLM_H
 
-#include "http_client.h"
 #include "memory.h"
 
 #ifdef __cplusplus
@@ -51,6 +50,10 @@ typedef struct ac_message {
  *============================================================================*/
 
 typedef struct {
+    /* Provider selection */
+    const char *provider;               /* Provider name: "openai", "anthropic", "gemini", etc. (optional) */
+    const char *compatible;             /* Compatibility mode: "openai" for OpenAI-compatible APIs (optional) */
+    
     /* LLM base info */
     const char *model;                  /* Model name (required) */
     const char *api_key;                /* API key (required) */

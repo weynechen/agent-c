@@ -83,6 +83,7 @@ int main(int argc, char *argv[]) {
     
     /* Create LLM client */
     ac_llm_params_t params = {
+        .provider = "openai",
         .model = model,
         .api_key = api_key,
         .api_base = base_url,

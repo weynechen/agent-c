@@ -8,8 +8,6 @@ set(AGENTC_CORE_SOURCES
     src/agentc.c
     src/agent.c
     src/llm/llm.c
-    src/llm/openai_api.c
-    src/llm/anthropic_api.c
     src/tool.c
     src/memory.c
     src/http_client.c

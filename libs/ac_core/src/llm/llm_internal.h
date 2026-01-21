@@ -32,6 +32,8 @@ struct ac_llm {
     void *priv;                /* Provider private data (allocated by provider) */
     
     /* Owned copies of string parameters */
+    char *provider_copy;
+    char *compatible_copy;
     char *model_copy;
     char *api_key_copy;
     char *api_base_copy;

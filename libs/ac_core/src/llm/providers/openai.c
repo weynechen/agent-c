@@ -204,10 +204,17 @@ static void openai_cleanup(void* priv_data) {
 
 /**
  * @brief OpenAI provider definition
+ * 
+ * Exported (non-static) so llm.c can register it during lazy initialization.
+ * The AC_PROVIDER_REGISTER macro provides automatic registration for custom
+ * providers loaded dynamically or in shared libraries.
  */
-const ac_llm_ops_t ac_provider_openai = {
-    .name = "OpenAI",
+const ac_llm_ops_t openai_ops = {
+    .name = "openai",
     .create = openai_create,
     .chat = openai_chat,
     .cleanup = openai_cleanup,
 };
+
+/* Auto-register provider at program startup (for dynamic/shared library builds) */
+AC_PROVIDER_REGISTER(openai, &openai_ops)
