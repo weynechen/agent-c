@@ -172,8 +172,8 @@ ac_llm_t *ac_llm_create(const ac_llm_params_t *params) {
     llm->params.timeout_ms = (params->timeout_ms > 0) ? params->timeout_ms : DEFAULT_TIMEOUT_MS;
 
     /* Find appropriate provider */
-    llm->provider = ac_llm_find_provider(&llm->params);
-    if (!llm->provider) {
+    llm->ops = ac_llm_find_provider(&llm->params);
+    if (!llm->ops) {
         AC_LOG_ERROR("No provider found for model=%s, base=%s", 
                      llm->params.model, llm->params.api_base);
         AGENTC_FREE(llm->model_copy);
@@ -185,36 +185,41 @@ ac_llm_t *ac_llm_create(const ac_llm_params_t *params) {
         return NULL;
     }
 
-    /* Create HTTP client */
-    agentc_http_client_config_t http_config = {
-        .default_timeout_ms = llm->params.timeout_ms,
-    };
-
-    agentc_err_t err = agentc_http_client_create(&http_config, &llm->http);
-    if (err != AGENTC_OK) {
-        AGENTC_FREE(llm->model_copy);
-        AGENTC_FREE(llm->api_key_copy);
-        AGENTC_FREE(llm->api_base_copy);
-        AGENTC_FREE(llm->instructions_copy);
-        AGENTC_FREE(llm->organization_copy);
-        AGENTC_FREE(llm);
-        return NULL;
+    /* Create provider private data */
+    if (llm->ops->create) {
+        llm->priv = llm->ops->create(&llm->params);
+        if (!llm->priv) {
+            AC_LOG_ERROR("Provider %s failed to create private data", llm->ops->name);
+            AGENTC_FREE(llm->model_copy);
+            AGENTC_FREE(llm->api_key_copy);
+            AGENTC_FREE(llm->api_base_copy);
+            AGENTC_FREE(llm->instructions_copy);
+            AGENTC_FREE(llm->organization_copy);
+            AGENTC_FREE(llm);
+            return NULL;
+        }
     }
 
     AC_LOG_INFO("LLM created: provider=%s, model=%s, base=%s", 
-                llm->provider->name, llm->params.model, llm->params.api_base);
+                llm->ops->name, llm->params.model, llm->params.api_base);
     return llm;
 }
 
 void ac_llm_destroy(ac_llm_t *llm) {
     if (!llm) return;
 
-    agentc_http_client_destroy(llm->http);
+    /* Cleanup provider private data */
+    if (llm->ops && llm->ops->cleanup) {
+        llm->ops->cleanup(llm->priv);
+    }
+
+    /* Free string copies */
     AGENTC_FREE(llm->model_copy);
     AGENTC_FREE(llm->api_key_copy);
     AGENTC_FREE(llm->api_base_copy);
     AGENTC_FREE(llm->instructions_copy);
     AGENTC_FREE(llm->organization_copy);
+    
     AGENTC_FREE(llm);
 }
 
@@ -222,19 +227,21 @@ void ac_llm_destroy(ac_llm_t *llm) {
  * Provider Routing
  *============================================================================*/
 
-const ac_llm_provider_t* ac_llm_find_provider(const ac_llm_params_t* params) {
-    // Try each built-in provider
-    if (ac_provider_anthropic.can_handle(params)) {
+const ac_llm_ops_t* ac_llm_find_provider(const ac_llm_params_t* params) {
+    if (!params) {
+        return NULL;
+    }
+    
+    const char* base = params->api_base ? params->api_base : "";
+    const char* model = params->model ? params->model : "";
+    
+    // Check Anthropic
+    if (strstr(base, "anthropic.com") || strstr(model, "claude")) {
         return &ac_provider_anthropic;
     }
     
-    if (ac_provider_openai.can_handle(params)) {
-        return &ac_provider_openai;
-    }
-    
-    // TODO: Check for custom providers in providers/ directory
-    
-    return NULL;
+    // Default to OpenAI (handles OpenAI, DeepSeek, and other OpenAI-compatible APIs)
+    return &ac_provider_openai;
 }
 
 /*============================================================================
@@ -507,13 +514,13 @@ agentc_err_t ac_llm_chat(
         return AGENTC_ERR_INVALID_ARG;
     }
 
-    if (!llm->provider || !llm->provider->chat) {
+    if (!llm->ops || !llm->ops->chat) {
         AC_LOG_ERROR("No provider chat function available");
         return AGENTC_ERR_INVALID_ARG;
     }
 
     /* Delegate to provider implementation */
-    return llm->provider->chat(llm, messages, tools, response);
+    return llm->ops->chat(llm->priv, &llm->params, messages, tools, response);
 }
 
 /*============================================================================
