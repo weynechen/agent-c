@@ -3,10 +3,11 @@
  * @brief libcurl HTTP backend for POSIX platforms (Linux/macOS)
  *
  * This is the hosted platform implementation using libcurl.
+ * Implements the interface defined in port/http_client.h.
  */
 
 #include "agentc/platform.h"
-#include "agentc/http_client.h"
+#include "../../http_client.h"
 #include "agentc/log.h"
 #include <curl/curl.h>
 #include <string.h>
@@ -81,33 +82,48 @@ static size_t stream_callback(void *contents, size_t size, size_t nmemb, void *u
 }
 
 /*============================================================================
- * Global Init/Cleanup
+ * Global Init/Cleanup with Reference Counting
+ * 
+ * curl_global_init() must be called once per process (not thread-safe).
+ * We use reference counting to automatically manage this:
+ * - First HTTP client creation -> curl_global_init()
+ * - Last HTTP client destruction -> curl_global_cleanup()
  *============================================================================*/
 
-static int s_curl_initialized = 0;
+static int s_curl_refcount = 0;
 
-agentc_err_t agentc_http_init(void) {
-    if (s_curl_initialized) {
-        return AGENTC_OK;
+static agentc_err_t curl_global_init_once(void) {
+    if (s_curl_refcount == 0) {
+        CURLcode res = curl_global_init(CURL_GLOBAL_DEFAULT);
+        if (res != CURLE_OK) {
+            AC_LOG_ERROR("curl_global_init failed: %s", curl_easy_strerror(res));
+            return AGENTC_ERR_BACKEND;
+        }
+        AC_LOG_DEBUG("CURL backend initialized (POSIX)");
     }
-    
-    CURLcode res = curl_global_init(CURL_GLOBAL_DEFAULT);
-    if (res != CURLE_OK) {
-        AC_LOG_ERROR("curl_global_init failed: %s", curl_easy_strerror(res));
-        return AGENTC_ERR_BACKEND;
-    }
-    
-    s_curl_initialized = 1;
-    AC_LOG_DEBUG("CURL backend initialized (POSIX)");
+    s_curl_refcount++;
+    AC_LOG_DEBUG("CURL refcount: %d", s_curl_refcount);
     return AGENTC_OK;
 }
 
-void agentc_http_cleanup(void) {
-    if (s_curl_initialized) {
-        curl_global_cleanup();
-        s_curl_initialized = 0;
-        AC_LOG_DEBUG("CURL backend cleaned up");
+static void curl_global_cleanup_once(void) {
+    if (s_curl_refcount > 0) {
+        s_curl_refcount--;
+        AC_LOG_DEBUG("CURL refcount: %d", s_curl_refcount);
+        if (s_curl_refcount == 0) {
+            curl_global_cleanup();
+            AC_LOG_DEBUG("CURL backend cleaned up");
+        }
     }
+}
+
+/* Deprecated: Kept for backward compatibility, but no longer required */
+agentc_err_t agentc_http_init(void) {
+    return curl_global_init_once();
+}
+
+void agentc_http_cleanup(void) {
+    curl_global_cleanup_once();
 }
 
 /*============================================================================
@@ -122,14 +138,22 @@ agentc_err_t agentc_http_client_create(
         return AGENTC_ERR_INVALID_ARG;
     }
     
+    /* Initialize curl globally if this is the first client */
+    agentc_err_t err = curl_global_init_once();
+    if (err != AGENTC_OK) {
+        return err;
+    }
+    
     agentc_http_client_t *client = AGENTC_CALLOC(1, sizeof(agentc_http_client_t));
     if (!client) {
+        curl_global_cleanup_once();  /* Decrement refcount on failure */
         return AGENTC_ERR_NO_MEMORY;
     }
     
     client->curl = curl_easy_init();
     if (!client->curl) {
         AGENTC_FREE(client);
+        curl_global_cleanup_once();  /* Decrement refcount on failure */
         return AGENTC_ERR_BACKEND;
     }
     
@@ -158,6 +182,9 @@ void agentc_http_client_destroy(agentc_http_client_t *client) {
     }
     
     AGENTC_FREE(client);
+    
+    /* Cleanup curl globally if this was the last client */
+    curl_global_cleanup_once();
 }
 
 /*============================================================================

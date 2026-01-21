@@ -6,6 +6,7 @@
  */
 
 #include "agentc/agent.h"
+#include "agentc/log.h"
 #include "agentc/platform.h"
 #include "cJSON.h"
 #include <string.h>

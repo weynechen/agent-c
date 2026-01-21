@@ -9,6 +9,7 @@
 #ifndef AGENTC_AGENT_H
 #define AGENTC_AGENT_H
 
+#include <stdint.h>
 #include "llm.h"
 #include "tool.h"
 #include "memory.h"

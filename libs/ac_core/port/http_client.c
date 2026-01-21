@@ -1,9 +1,12 @@
 /**
  * @file http_client.c
- * @brief HTTP client common implementation
+ * @brief HTTP client common implementation (Platform Layer)
+ * 
+ * This file provides platform-agnostic HTTP client utilities.
+ * Platform-specific implementations are in posix/http/, windows/http/, etc.
  */
 
-#include "agentc/http_client.h"
+#include "http_client.h"
 #include "agentc/platform.h"
 #include <string.h>
 #include <ctype.h>

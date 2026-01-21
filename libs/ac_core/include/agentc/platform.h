@@ -7,7 +7,6 @@
 
 #ifndef AGENTC_PLATFORM_H
 #define AGENTC_PLATFORM_H
-
 /*============================================================================
  * Platform Detection
  *============================================================================*/
@@ -121,42 +120,20 @@
 #endif
 
 /*============================================================================
- * Debug/Logging
+ * Logging Platform Handler
  * 
- * Note: If log.h is included, it will provide more detailed logging macros.
- * These are simple fallback definitions for minimal environments.
+ * The logging macros (AC_LOG_ERROR, AC_LOG_WARN, AC_LOG_INFO, AC_LOG_DEBUG)
+ * are defined in log.h. Each platform only needs to implement the handler
+ * function below to output log messages.
+ * 
+ * Platform implementations:
+ * - POSIX: port/posix/log_posix.c (file logging with colors)
+ * - Windows: port/windows/log_windows.c (console with colors)
+ * - FreeRTOS: port/freertos/log_freertos.c (UART/Serial)
+ * 
+ * Note: The actual function signature uses ac_log_level_t and va_list,
+ * which are defined in log.h. The forward declaration here is minimal.
  *============================================================================*/
-
-#ifndef AC_LOG_LEVEL
-    #define AC_LOG_LEVEL 3  /* 0=off, 1=error, 2=warn, 3=info, 4=debug */
-#endif
-
-#ifndef AC_LOG
-    #include <stdio.h>
-    #define AC_LOG(level, fmt, ...) \
-        do { \
-            if ((level) <= AC_LOG_LEVEL) { \
-                printf("[AGENTC] " fmt "\n", ##__VA_ARGS__); \
-            } \
-        } while(0)
-#endif
-
-/* Only define these if not already defined by log.h */
-#ifndef AC_LOG_ERROR
-    #define AC_LOG_ERROR(fmt, ...) AC_LOG(1, "ERROR: " fmt, ##__VA_ARGS__)
-#endif
-
-#ifndef AC_LOG_WARN
-    #define AC_LOG_WARN(fmt, ...)  AC_LOG(2, "WARN: " fmt, ##__VA_ARGS__)
-#endif
-
-#ifndef AC_LOG_INFO
-    #define AC_LOG_INFO(fmt, ...)  AC_LOG(3, "INFO: " fmt, ##__VA_ARGS__)
-#endif
-
-#ifndef AC_LOG_DEBUG
-    #define AC_LOG_DEBUG(fmt, ...) AC_LOG(4, "DEBUG: " fmt, ##__VA_ARGS__)
-#endif
 
 /*============================================================================
  * Static Assertions

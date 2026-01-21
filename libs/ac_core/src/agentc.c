@@ -1,6 +1,14 @@
 /**
  * @file agentc.c
- * @brief AgentC global initialization
+ * @brief AgentC global initialization and utilities
+ * 
+ * Note: As of the refactoring, HTTP backend initialization (e.g., curl_global_init)
+ * is now managed automatically via reference counting in http_client_create/destroy.
+ * 
+ * This file now provides:
+ * - Optional initialization hook (for future extensions)
+ * - Version information
+ * - Error code to string conversion
  */
 
 #include "agentc.h"
@@ -12,10 +20,10 @@ agentc_err_t ac_init(void) {
         return AGENTC_OK;
     }
 
-    agentc_err_t err = agentc_http_init();
-    if (err != AGENTC_OK) {
-        return err;
-    }
+    /* 
+     * Note: HTTP backend is now auto-initialized by providers.
+     * This function is kept for future extensions and backward compatibility.
+     */
 
     s_initialized = 1;
     AC_LOG_INFO("AgentC %s initialized", AGENTC_VERSION_STRING);
@@ -27,7 +35,11 @@ void ac_cleanup(void) {
         return;
     }
 
-    agentc_http_cleanup();
+    /* 
+     * Note: HTTP backend is now auto-cleaned up when last client is destroyed.
+     * This function is kept for future extensions and backward compatibility.
+     */
+
     s_initialized = 0;
     AC_LOG_INFO("AgentC cleaned up");
 }

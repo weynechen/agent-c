@@ -1,9 +1,18 @@
 /**
  * @file http_client.h
- * @brief AgentC HTTP Client Abstraction Layer
+ * @brief AgentC HTTP Client Platform Abstraction Layer
  *
  * This header defines a platform-agnostic HTTP client interface.
- * Backends: libcurl (Linux/Windows), mongoose+mbedTLS (embedded)
+ * Platform-specific implementations:
+ * - POSIX: libcurl (port/posix/http/http_curl.c)
+ * - Windows: WinHTTP (port/windows/http/http_winhttp.c)
+ * - FreeRTOS: mongoose+mbedTLS (port/freertos/http/http_mongoose.c)
+ * 
+ * Used by:
+ * - LLM providers (openai.c, anthropic.c)
+ * - MCP client (ac_hosted/mcp.c)
+ * 
+ * NOTE: This is an internal port layer header, not part of public API.
  */
 
 #ifndef AGENTC_HTTP_CLIENT_H
@@ -11,7 +20,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include "error.h"
+#include "agentc/error.h"
 
 #ifdef __cplusplus
 extern "C" {

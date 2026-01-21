@@ -10,7 +10,7 @@
 #define AGENTC_HOSTED_RULES_H
 
 #include <agentc/platform.h>
-#include <agentc/http_client.h>
+#include <agentc/error.h>
 #include <stddef.h>
 
 #ifdef __cplusplus

@@ -4,7 +4,7 @@
  */
 
 #include "agentc/tool.h"
-#include "agentc/platform.h"
+#include "agentc/log.h"
 #include "cJSON.h"
 #include <string.h>
 #include <stdio.h>
