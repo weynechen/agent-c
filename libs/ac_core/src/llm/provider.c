@@ -110,6 +110,7 @@ const ac_llm_ops_t* ac_llm_find_provider(const ac_llm_params_t* params) {
     }
     
     /* Ensure built-in providers are registered */
+    /* TODO: need fix this , provide a reliab way to regiser providers*/
     ac_llm_init_builtin_providers();
 
     if (params->provider == NULL) {
