@@ -16,13 +16,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
-#include "agentc.h"
+#include "agentc/session.h"
+#include "agentc/agent.h"
+#include "agentc/log.h"
 #include "dotenv.h"
 #include "markdown/md.h"
 #include "platform_wrap.h"
 
 #define MAX_INPUT_LEN 4096
-#define MAX_HISTORY 20
 
 static volatile int g_running = 1;
 static int g_use_markdown = 1;
@@ -36,10 +37,32 @@ static void signal_handler(int sig) {
 static void print_usage(void) {
     printf("\nCommands:\n");
     printf("  /help     - Show this help\n");
-    printf("  /clear    - Clear conversation history\n");
+    printf("  /clear    - Clear conversation history (create new agent)\n");
     printf("  /model    - Show current model\n");
     printf("  /md       - Toggle markdown rendering\n");
     printf("  /quit     - Exit\n\n");
+}
+
+/**
+ * @brief Create or recreate agent with current configuration
+ */
+static ac_agent_t* create_agent(ac_session_t* session, const char* model, 
+                                 const char* api_key, const char* base_url) {
+    ac_agent_t* agent = ac_agent_create(session, &(ac_agent_params_t){
+        .name = "ChatBot",
+        .instructions = "You are a helpful assistant. Be concise and clear.",
+        .llm_params = {
+            .provider = "openai",
+            .model = model,
+            .api_key = api_key,
+            .api_base = base_url,
+            .instructions = NULL,  /* Already set in agent instructions */
+        },
+        .tools_name = NULL,
+        .max_iterations = 10
+    });
+    
+    return agent;
 }
 
 int main(int argc, char *argv[]) {
@@ -74,27 +97,20 @@ int main(int argc, char *argv[]) {
     /* Setup signal handler */
     signal(SIGINT, signal_handler);
     
-    /* Initialize AgentC */
-    agentc_err_t err = ac_init();
-    if (err != AGENTC_OK) {
-        AC_LOG_ERROR("Failed to initialize AgentC: %s\n", ac_strerror(err));
+    /* Open session */
+    ac_session_t* session = ac_session_open();
+    if (!session) {
+        AC_LOG_ERROR("Failed to open session\n");
+        platform_cleanup_terminal();
         return 1;
     }
     
-    /* Create LLM client */
-    ac_llm_params_t params = {
-        .provider = "openai",
-        .model = model,
-        .api_key = api_key,
-        .api_base = base_url,
-        .temperature = 0.7f,
-        .timeout_ms = 120000,  /* 2 minutes for slow models */
-    };
-    
-    ac_llm_t *llm = ac_llm_create(&params);
-    if (!llm) {
-        AC_LOG_ERROR("Failed to create LLM client\n");
-        ac_cleanup();
+    /* Create agent */
+    ac_agent_t* agent = create_agent(session, model, api_key, base_url);
+    if (!agent) {
+        AC_LOG_ERROR("Failed to create agent\n");
+        ac_session_close(session);
+        platform_cleanup_terminal();
         return 1;
     }
     
@@ -103,14 +119,6 @@ int main(int argc, char *argv[]) {
     printf("Endpoint: %s\n", base_url ? base_url : "https://api.openai.com/v1");
     printf("Markdown: %s (use /md to toggle)\n", g_use_markdown ? "ON" : "OFF");
     printf("Type /help for commands, /quit to exit\n\n");
-    
-    /* Conversation history */
-    ac_message_t *history = NULL;
-    
-    /* Add system message */
-    ac_message_append(&history, 
-        ac_message_create(AC_ROLE_SYSTEM, 
-            "You are a helpful assistant. Be concise and clear."));
     
     char input[MAX_INPUT_LEN];
     
@@ -141,12 +149,14 @@ int main(int argc, char *argv[]) {
                 print_usage();
                 continue;
             } else if (strcmp(input, "/clear") == 0) {
-                ac_message_free(history);
-                history = NULL;
-                ac_message_append(&history,
-                    ac_message_create(AC_ROLE_SYSTEM,
-                        "You are a helpful assistant. Be concise and clear."));
-                printf("[History cleared]\n");
+                /* Destroy old agent and create new one to clear history */
+                ac_agent_destroy(agent);
+                agent = create_agent(session, model, api_key, base_url);
+                if (!agent) {
+                    AC_LOG_ERROR("Failed to recreate agent\n");
+                    break;
+                }
+                printf("[History cleared - new agent created]\n");
                 continue;
             } else if (strcmp(input, "/model") == 0) {
                 printf("[Model: %s]\n", model);
@@ -161,42 +171,27 @@ int main(int argc, char *argv[]) {
             }
         }
         
-        /* Add user message to history */
-        ac_message_append(&history, 
-            ac_message_create(AC_ROLE_USER, input));
-        
         printf("Assistant: ");
         fflush(stdout);
         
-        /* Blocking mode */
-        ac_chat_response_t resp = {0};
-        err = ac_llm_chat(llm, history, NULL, &resp);
+        /* Run agent synchronously */
+        ac_agent_result_t* result = ac_agent_run_sync(agent, input);
         
-        if (err == AGENTC_OK && resp.content) {
+        if (result && result->content) {
             if (g_use_markdown) {
-                md_render(resp.content);
+                md_render(result->content);
             } else {
-                printf("%s\n", resp.content);
+                printf("%s\n", result->content);
             }
-            printf("[%s, %d tokens]\n", 
-                resp.finish_reason ? resp.finish_reason : "done",
-                resp.total_tokens);
-            
-            /* Add assistant response to history */
-            ac_message_append(&history,
-                ac_message_create(AC_ROLE_ASSISTANT, resp.content));
         } else {
-            printf("[Error: %s]\n", ac_strerror(err));
+            printf("[No response from agent]\n");
         }
         
-        ac_chat_response_free(&resp);
         printf("\n");
     }
     
-    /* Cleanup */
-    ac_message_free(history);
-    ac_llm_destroy(llm);
-    ac_cleanup();
+    /* Cleanup - session automatically destroys all agents */
+    ac_session_close(session);
     platform_cleanup_terminal();
     
     printf("Goodbye!\n");

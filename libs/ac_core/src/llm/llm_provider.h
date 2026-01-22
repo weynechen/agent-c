@@ -12,13 +12,14 @@
 #define AGENTC_LLM_PROVIDER_H
 
 #include "agentc/llm.h"
+#include "agentc/message.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /**
- * @brief Provider operations (similar to net_device_ops in Linux)
+ * @brief Provider operations
  * 
  * Each provider implements these functions to manage its own resources
  * and handle LLM-specific request/response processing.
@@ -42,23 +43,23 @@ typedef struct ac_llm_ops {
      * 
      * @param priv Provider private data (returned by create)
      * @param params LLM parameters
-     * @param messages Message history
-     * @param tools Tools JSON
-     * @param response Output response
+     * @param messages Message history (linked list)
+     * @param response_buffer Buffer for response (allocated by caller)
+     * @param buffer_size Size of response buffer
      * @return AGENTC_OK on success
      */
     agentc_err_t (*chat)(
         void* priv,
         const ac_llm_params_t* params,
         const ac_message_t* messages,
-        const char* tools,
-        ac_chat_response_t* response
+        char* response_buffer,
+        size_t buffer_size
     );
     
     /**
      * @brief Cleanup provider private data
      * 
-     * Called during ac_llm_destroy() to free provider-specific resources.
+     * Called during arena destruction to free provider-specific resources.
      * 
      * @param priv Provider private data (returned by create)
      */
@@ -118,7 +119,8 @@ const ac_llm_ops_t* ac_llm_find_provider(const ac_llm_params_t* params);
 #define AC_PROVIDER_REGISTER(name, ops) \
     PROVIDER_CALL_CONSTRUCTOR(ac_register_provider_##name) { \
         ac_llm_register_provider(#name, ops); \
-    }
+    } \
+    extern int ac_provider_##name##_dummy
 
 #ifdef __cplusplus
 }

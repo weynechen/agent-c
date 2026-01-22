@@ -112,7 +112,7 @@ agentc_err_t ac_mcp_discover_tools(ac_mcp_client_t *client);
  */
 agentc_err_t ac_mcp_register_tools(
     ac_mcp_client_t *client,
-    ac_tools_t *tool_registry
+    ac_tool_group_t *tool_registry
 );
 
 /**

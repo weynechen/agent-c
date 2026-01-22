@@ -1,0 +1,113 @@
+/**
+ * @file message.c
+ * @brief Message implementation
+ */
+
+#include "agentc/message.h"
+#include "agentc/log.h"
+#include <string.h>
+
+/*============================================================================
+ * Role Helper
+ *============================================================================*/
+
+const char* ac_role_to_string(ac_role_t role) {
+    switch (role) {
+        case AC_ROLE_SYSTEM:    return "system";
+        case AC_ROLE_USER:      return "user";
+        case AC_ROLE_ASSISTANT: return "assistant";
+        case AC_ROLE_TOOL:      return "tool";
+        default:                return "unknown";
+    }
+}
+
+/*============================================================================
+ * Message Creation
+ *============================================================================*/
+
+ac_message_t* ac_message_create(arena_t* arena, ac_role_t role, const char* content) {
+    if (!arena || !content) {
+        AC_LOG_ERROR("Invalid arguments to ac_message_create");
+        return NULL;
+    }
+    
+    ac_message_t* msg = (ac_message_t*)arena_alloc(arena, sizeof(ac_message_t));
+    if (!msg) {
+        AC_LOG_ERROR("Failed to allocate message from arena");
+        return NULL;
+    }
+    
+    msg->role = role;
+    msg->content = arena_strdup(arena, content);
+    msg->tool_call_id = NULL;
+    msg->next = NULL;
+    
+    if (!msg->content) {
+        AC_LOG_ERROR("Failed to duplicate message content");
+        return NULL;
+    }
+    
+    return msg;
+}
+
+ac_message_t* ac_message_create_tool_result(
+    arena_t* arena,
+    const char* tool_call_id,
+    const char* content
+) {
+    if (!arena || !tool_call_id || !content) {
+        AC_LOG_ERROR("Invalid arguments to ac_message_create_tool_result");
+        return NULL;
+    }
+    
+    ac_message_t* msg = (ac_message_t*)arena_alloc(arena, sizeof(ac_message_t));
+    if (!msg) {
+        AC_LOG_ERROR("Failed to allocate message from arena");
+        return NULL;
+    }
+    
+    msg->role = AC_ROLE_TOOL;
+    msg->content = arena_strdup(arena, content);
+    msg->tool_call_id = arena_strdup(arena, tool_call_id);
+    msg->next = NULL;
+    
+    if (!msg->content || !msg->tool_call_id) {
+        AC_LOG_ERROR("Failed to duplicate message strings");
+        return NULL;
+    }
+    
+    return msg;
+}
+
+/*============================================================================
+ * Message List Operations
+ *============================================================================*/
+
+void ac_message_append(ac_message_t** list, ac_message_t* message) {
+    if (!list || !message) {
+        return;
+    }
+    
+    if (!*list) {
+        *list = message;
+        return;
+    }
+    
+    ac_message_t* tail = *list;
+    while (tail->next) {
+        tail = tail->next;
+    }
+    tail->next = message;
+}
+
+size_t ac_message_count(const ac_message_t* list) {
+    size_t count = 0;
+    const ac_message_t* curr = list;
+    
+    while (curr) {
+        count++;
+        curr = curr->next;
+    }
+    
+    return count;
+}

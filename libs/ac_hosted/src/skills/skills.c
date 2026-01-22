@@ -267,7 +267,7 @@ const ac_skill_t *ac_skills_find(const ac_skills_t *skills, const char *name) {
 
 agentc_err_t ac_skills_validate_tools(
     const ac_skills_t *skills,
-    const ac_tools_t *tool_registry
+    const ac_tool_group_t *tool_registry
 ) {
     if (!skills || !tool_registry) {
         return AGENTC_ERR_INVALID_ARG;
