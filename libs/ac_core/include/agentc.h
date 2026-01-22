@@ -19,12 +19,8 @@
 #ifndef AGENTC_H
 #define AGENTC_H
 
-#include "agentc/log.h"
 #include "agentc/error.h"
-#include "agentc/llm.h"
-#include "agentc/tool.h"
-#include "agentc/memory.h"
-#include "agentc/agent.h"
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -43,28 +39,6 @@ extern "C" {
  * Global Initialization
  *============================================================================*/
 
-/**
- * @brief Initialize AgentC runtime
- *
- * Must be called once before using any AgentC functions.
- * Initializes all subsystems (HTTP, etc.)
- *
- * @return AGENTC_OK on success, error code otherwise
- */
-agentc_err_t ac_init(void);
-
-/**
- * @brief Cleanup AgentC runtime
- *
- * Call before program exit to release resources.
- */
-void ac_cleanup(void);
-
-/**
- * @brief Get AgentC version string
- *
- * @return Version string (e.g., "0.1.0")
- */
 const char *ac_version(void);
 
 /**

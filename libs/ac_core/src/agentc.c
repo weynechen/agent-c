@@ -13,37 +13,6 @@
 
 #include "agentc.h"
 
-static int s_initialized = 0;
-
-agentc_err_t ac_init(void) {
-    if (s_initialized) {
-        return AGENTC_OK;
-    }
-
-    /* 
-     * Note: HTTP backend is now auto-initialized by providers.
-     * This function is kept for future extensions and backward compatibility.
-     */
-
-    s_initialized = 1;
-    AC_LOG_INFO("AgentC %s initialized", AGENTC_VERSION_STRING);
-    return AGENTC_OK;
-}
-
-void ac_cleanup(void) {
-    if (!s_initialized) {
-        return;
-    }
-
-    /* 
-     * Note: HTTP backend is now auto-cleaned up when last client is destroyed.
-     * This function is kept for future extensions and backward compatibility.
-     */
-
-    s_initialized = 0;
-    AC_LOG_INFO("AgentC cleaned up");
-}
-
 const char *ac_version(void) {
     return AGENTC_VERSION_STRING;
 }
