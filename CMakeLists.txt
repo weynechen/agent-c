@@ -17,6 +17,7 @@ set_property(CACHE AGENTC_PROFILE PROPERTY STRINGS minimal hosted embedded)
 option(AGENTC_BUILD_TOOLS "Build development tools" OFF)
 option(AGENTC_BUILD_EXAMPLES "Build example programs" ON)
 option(AGENTC_BUILD_TESTS "Build unit tests" OFF)
+option(AGENTC_BUILD_EXTRAS "Build extra applications" ON)
 
 # Platform detection
 if(UNIX AND NOT APPLE)
@@ -57,6 +58,10 @@ endif()
 
 if(AGENTC_BUILD_TESTS)
     add_subdirectory(tests)
+endif()
+
+if(AGENTC_BUILD_EXTRAS AND AGENTC_PROFILE STREQUAL "hosted")
+    add_subdirectory(extras/minimal_cli)
 endif()
 
 # Install

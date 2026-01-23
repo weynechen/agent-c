@@ -1,0 +1,21 @@
+# Build directories
+build/
+cmake-build-*/
+
+# Binary
+minimal_cli
+
+# Environment files
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
