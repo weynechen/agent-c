@@ -107,20 +107,23 @@ const ac_llm_ops_t* ac_llm_find_provider(const ac_llm_params_t* params);
  * @endcode
  */
 #if defined(_MSC_VER)
-    #define PROVIDER_CONSTRUCTOR __pragma(section(".CRT$XCT")) \
-        __declspec(allocate(".CRT$XCT"))
-    #define PROVIDER_CALL_CONSTRUCTOR(f) \
-        PROVIDER_CONSTRUCTOR static void (__cdecl *f##_)(void) = f;
+    // MSVC: Use .CRT$XCU section for automatic initialization
+    #define AC_PROVIDER_REGISTER(name, ops) \
+        static void __cdecl ac_register_provider_##name##_impl(void) { \
+            ac_llm_register_provider(#name, ops); \
+        } \
+        __pragma(section(".CRT$XCU", read)) \
+        __declspec(allocate(".CRT$XCU")) \
+        static void (__cdecl *ac_register_provider_##name##_ptr)(void) = ac_register_provider_##name##_impl; \
+        extern int ac_provider_##name##_dummy
 #else
-    #define PROVIDER_CALL_CONSTRUCTOR(f) \
-        __attribute__((constructor)) static void f(void)
+    // GCC/Clang: Use constructor attribute
+    #define AC_PROVIDER_REGISTER(name, ops) \
+        __attribute__((constructor)) static void ac_register_provider_##name(void) { \
+            ac_llm_register_provider(#name, ops); \
+        } \
+        extern int ac_provider_##name##_dummy
 #endif
-
-#define AC_PROVIDER_REGISTER(name, ops) \
-    PROVIDER_CALL_CONSTRUCTOR(ac_register_provider_##name) { \
-        ac_llm_register_provider(#name, ops); \
-    } \
-    extern int ac_provider_##name##_dummy
 
 #ifdef __cplusplus
 }
