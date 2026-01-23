@@ -15,6 +15,14 @@ extern "C"
  */
 int env_load(const char* path, bool overwrite);
 
+/**
+ * @brief Get environment variable with default value
+ * @param name Environment variable name
+ * @param default_value Default value to return if variable is not set or empty
+ * @return Environment variable value or default_value
+ */
+const char* getenv_default(const char* name, const char* default_value);
+
 #ifdef __cplusplus
 }
 #endif
