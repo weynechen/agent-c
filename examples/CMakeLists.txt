@@ -5,6 +5,19 @@ cmake_minimum_required(VERSION 3.14)
 # Get cJSON include dir
 set(CJSON_INCLUDE ${CMAKE_SOURCE_DIR}/external/cjson)
 
+# Example 0: Minimal hello world
+add_executable(hello hosted/hello.c)
+target_link_libraries(hello PRIVATE
+    ac_core::ac_core
+    agentc_dotenv
+)
+target_include_directories(hello PRIVATE
+    ${CJSON_INCLUDE}
+)
+if(AGENTC_USE_CURL)
+  target_link_libraries(hello PRIVATE CURL::libcurl)
+endif()
+
 # Example 1: Simple chat demo with Markdown rendering
 add_executable(chat_demo hosted/chat_demo.c)
 target_link_libraries(chat_demo PRIVATE
@@ -77,4 +90,4 @@ else()
   message(STATUS "  Install with: sudo apt install libnotcurses-dev")
 endif()
 
-message(STATUS "AgentC Examples: chat_demo, chat_tools, chat_markdown${NOTCURSES_FOUND}")
+message(STATUS "AgentC Examples: hello, chat_demo, chat_tools, chat_markdown${NOTCURSES_FOUND}")

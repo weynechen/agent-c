@@ -193,3 +193,12 @@ int env_load(const char *path, bool overwrite)
 
     return 0;
 }
+
+const char* getenv_default(const char* name, const char* default_value)
+{
+    const char* value = getenv(name);
+    if (!value || value[0] == '\0') {
+        return default_value;
+    }
+    return value;
+}
