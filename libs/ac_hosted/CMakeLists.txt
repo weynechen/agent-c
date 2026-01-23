@@ -78,6 +78,12 @@ target_compile_definitions(agentc_markdown PRIVATE
     PCRE2_CODE_UNIT_WIDTH=8
 )
 
+# CRITICAL: Define PCRE2_STATIC for static linking on Windows
+# This must be PUBLIC so that consuming targets also see it
+target_compile_definitions(agentc_markdown PUBLIC
+    PCRE2_STATIC
+)
+
 # Hosted library (combining all hosted features)
 add_library(ac_hosted STATIC ${AGENTC_HOSTED_SOURCES})
 add_library(ac_hosted::ac_hosted ALIAS ac_hosted)
@@ -91,6 +97,13 @@ target_include_directories(ac_hosted PUBLIC
 target_include_directories(ac_hosted PRIVATE
     ${CMAKE_SOURCE_DIR}/libs/ac_core/port    # HTTP client and other port abstractions
 )
+
+# Windows: Add dirent compatibility layer
+if(WIN32)
+    target_include_directories(ac_hosted PRIVATE
+        ${CMAKE_SOURCE_DIR}/external/dirent-windows
+    )
+endif()
 
 target_link_libraries(ac_hosted PUBLIC
     ac_core::ac_core

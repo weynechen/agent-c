@@ -14,6 +14,11 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
+# Windows: Add dirent compatibility layer
+if(WIN32)
+    include_directories(${AGENTC_DIR}/external/dirent-windows)
+endif()
+
 # Link directories
 link_directories(
     ${AGENTC_DIR}/build/ac_core
