@@ -72,7 +72,7 @@ set(MOC_OUTPUT_SOURCE "${MOC_OUTPUT_BASE}.c")
 add_custom_command(
     OUTPUT ${MOC_OUTPUT_HEADER} ${MOC_OUTPUT_SOURCE}
     COMMAND ${MOC_EXECUTABLE} ${MOC_INPUT} -o ${MOC_OUTPUT_BASE}
-    DEPENDS ${MOC_INPUT}
+    DEPENDS ${MOC_INPUT} moc
     COMMENT "Running MOC on builtin_tools.h"
     VERBATIM
 )

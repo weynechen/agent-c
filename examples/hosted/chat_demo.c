@@ -16,9 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
-#include "agentc/session.h"
-#include "agentc/agent.h"
-#include "agentc/log.h"
+#include <agentc.h>
 #include "dotenv.h"
 #include "markdown/md.h"
 #include "platform_wrap.h"
@@ -46,19 +44,18 @@ static void print_usage(void) {
 /**
  * @brief Create or recreate agent with current configuration
  */
-static ac_agent_t* create_agent(ac_session_t* session, const char* model, 
-                                 const char* api_key, const char* base_url) {
-    ac_agent_t* agent = ac_agent_create(session, &(ac_agent_params_t){
+static ac_agent_t *create_agent(ac_session_t *session, const char *model, 
+                                const char *api_key, const char *base_url) {
+    ac_agent_t *agent = ac_agent_create(session, &(ac_agent_params_t){
         .name = "ChatBot",
         .instructions = "You are a helpful assistant. Be concise and clear.",
-        .llm_params = {
+        .llm = {
             .provider = "openai",
             .model = model,
             .api_key = api_key,
             .api_base = base_url,
-            .instructions = NULL,  /* Already set in agent instructions */
         },
-        .tools_name = NULL,
+        .tools = NULL,
         .max_iterations = 10
     });
     
@@ -82,8 +79,8 @@ int main(int argc, char *argv[]) {
     /* Get API key from environment */
     const char *api_key = getenv("OPENAI_API_KEY");
     if (!api_key || strlen(api_key) == 0) {
-        AC_LOG_ERROR("Error: OPENAI_API_KEY not set\n");
-        AC_LOG_ERROR("Create a .env file with: OPENAI_API_KEY=sk-xxx\n");
+        AC_LOG_ERROR("OPENAI_API_KEY not set");
+        AC_LOG_ERROR("Create a .env file with: OPENAI_API_KEY=sk-xxx");
         return 1;
     }
     
@@ -98,17 +95,17 @@ int main(int argc, char *argv[]) {
     signal(SIGINT, signal_handler);
     
     /* Open session */
-    ac_session_t* session = ac_session_open();
+    ac_session_t *session = ac_session_open();
     if (!session) {
-        AC_LOG_ERROR("Failed to open session\n");
+        AC_LOG_ERROR("Failed to open session");
         platform_cleanup_terminal();
         return 1;
     }
     
     /* Create agent */
-    ac_agent_t* agent = create_agent(session, model, api_key, base_url);
+    ac_agent_t *agent = create_agent(session, model, api_key, base_url);
     if (!agent) {
-        AC_LOG_ERROR("Failed to create agent\n");
+        AC_LOG_ERROR("Failed to create agent");
         ac_session_close(session);
         platform_cleanup_terminal();
         return 1;
@@ -153,7 +150,7 @@ int main(int argc, char *argv[]) {
                 ac_agent_destroy(agent);
                 agent = create_agent(session, model, api_key, base_url);
                 if (!agent) {
-                    AC_LOG_ERROR("Failed to recreate agent\n");
+                    AC_LOG_ERROR("Failed to recreate agent");
                     break;
                 }
                 printf("[History cleared - new agent created]\n");
@@ -174,8 +171,8 @@ int main(int argc, char *argv[]) {
         printf("Assistant: ");
         fflush(stdout);
         
-        /* Run agent synchronously */
-        ac_agent_result_t* result = ac_agent_run_sync(agent, input);
+        /* Run agent */
+        ac_agent_result_t *result = ac_agent_run(agent, input);
         
         if (result && result->content) {
             if (g_use_markdown) {

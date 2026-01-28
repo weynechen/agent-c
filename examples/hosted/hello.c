@@ -9,9 +9,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include "agentc/session.h"
-#include "agentc/agent.h"
-#include "agentc/log.h"
+#include <agentc.h>
 #include "dotenv.h"
 
 int main(void) {
@@ -22,38 +20,38 @@ int main(void) {
     const char *base_url = getenv_default("OPENAI_BASE_URL", NULL);
 
     if (!api_key) {
-        AC_LOG_ERROR("Error: OPENAI_API_KEY not set\n");
+        AC_LOG_ERROR("OPENAI_API_KEY not set");
         return 1;
     }
     
-    ac_session_t* session = ac_session_open();
+    ac_session_t *session = ac_session_open();
     if (!session) {
-        AC_LOG_ERROR("Failed to open session\n");
+        AC_LOG_ERROR("Failed to open session");
         return 1;
     }
     
-    ac_agent_t* agent = ac_agent_create(session, &(ac_agent_params_t){
+    ac_agent_t *agent = ac_agent_create(session, &(ac_agent_params_t){
         .name = "HelloBot",
         .instructions = "You are a friendly assistant.",
-        .llm_params = {
+        .llm = {
             .provider = "openai",
             .model = model,
             .api_key = api_key,
             .api_base = base_url,
         },
         .tools = NULL,
-        .tool_table = NULL,
         .max_iterations = 10
     });
     
     if (!agent) {
-        AC_LOG_ERROR("Failed to create agent\n");
+        AC_LOG_ERROR("Failed to create agent");
         ac_session_close(session);
         return 1;
     }
     
     const char *user_prompt = "Write a haiku about recursion in programming.";
-    ac_agent_result_t* result = ac_agent_run_sync(agent, user_prompt);
+    ac_agent_result_t *result = ac_agent_run(agent, user_prompt);
+    
     printf("----------------------\n");
     printf("[user]:\n%s\n\n", user_prompt); 
     if (result && result->content) {

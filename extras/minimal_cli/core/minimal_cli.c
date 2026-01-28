@@ -2,19 +2,17 @@
  * @file minimal_cli.c
  * @brief Minimal CLI Core Implementation
  *
- * Uses the new MOC-based tool system with AC_TOOL_META markers.
+ * Uses the new unified tool system with ac_tool_registry_t.
  */
 
 #include "minimal_cli.h"
 #include "builtin_tools.h"
-#include <agentc/agent.h>
-#include <agentc/session.h>
-#include <agentc/log.h>
+#include <agentc.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* Include MOC-generated tool table */
+/* Include MOC-generated tool definitions */
 #include "tools_gen.h"
 
 /*============================================================================
@@ -112,14 +110,24 @@ int minimal_cli_run_once(minimal_cli_t *cli, const char *prompt) {
         AC_LOG_INFO("[User] %s", prompt);
     }
     
-    /* Build agent configuration with MOC tools */
+    /* Create tool registry if tools enabled */
+    ac_tool_registry_t *tools = NULL;
+    if (cli->config.enable_tools) {
+        tools = ac_tool_registry_create(cli->session);
+        if (tools) {
+            /* Add all MOC-generated tools */
+            ac_tool_registry_add_array(tools, ALL_TOOLS);
+        }
+    }
+    
+    /* Build agent configuration */
     ac_agent_params_t params = {
         .name = "MinimalCLI",
         .instructions = 
             "You are a helpful assistant. "
             "Provide clear and concise responses. "
             "Use tools when appropriate to help the user.",
-        .llm_params = {
+        .llm = {
             .provider = provider,
             .model = model,
             .api_key = cli->config.api_key,
@@ -127,24 +135,9 @@ int minimal_cli_run_once(minimal_cli_t *cli, const char *prompt) {
             .temperature = cli->config.temperature,
             .timeout_ms = cli->config.timeout_ms > 0 ? cli->config.timeout_ms : 60000,
         },
+        .tools = tools,
         .max_iterations = cli->config.max_iterations > 0 ? cli->config.max_iterations : 5,
     };
-    
-    /* Configure tools if enabled */
-    if (cli->config.enable_tools) {
-        /* Select all available tools */
-        static const char* all_tools[] = {
-            "shell_execute",
-            "read_file",
-            "write_file",
-            "list_directory",
-            "get_current_time",
-            "calculator",
-            NULL
-        };
-        params.tools = all_tools;
-        params.tool_table = G_TOOL_TABLE;
-    }
     
     /* Create agent */
     ac_agent_t *agent = ac_agent_create(cli->session, &params);
@@ -154,7 +147,7 @@ int minimal_cli_run_once(minimal_cli_t *cli, const char *prompt) {
     }
     
     /* Run agent */
-    ac_agent_result_t *result = ac_agent_run_sync(agent, prompt);
+    ac_agent_result_t *result = ac_agent_run(agent, prompt);
     
     if (!result || !result->content) {
         AC_LOG_ERROR("[Error] Agent run failed");
@@ -206,7 +199,17 @@ int minimal_cli_run_interactive(minimal_cli_t *cli) {
         printf("Type 'exit' or 'quit' to exit, 'help' for help.\n\n");
     }
     
-    /* Build agent configuration with MOC tools */
+    /* Create tool registry if tools enabled */
+    ac_tool_registry_t *tools = NULL;
+    if (cli->config.enable_tools) {
+        tools = ac_tool_registry_create(cli->session);
+        if (tools) {
+            /* Add all MOC-generated tools */
+            ac_tool_registry_add_array(tools, ALL_TOOLS);
+        }
+    }
+    
+    /* Build agent configuration */
     ac_agent_params_t params = {
         .name = "MinimalCLI",
         .instructions = 
@@ -214,7 +217,7 @@ int minimal_cli_run_interactive(minimal_cli_t *cli) {
             "Provide clear and concise responses. "
             "Remember the conversation context. "
             "Use tools when appropriate to help the user.",
-        .llm_params = {
+        .llm = {
             .provider = provider,
             .model = model,
             .api_key = cli->config.api_key,
@@ -222,24 +225,9 @@ int minimal_cli_run_interactive(minimal_cli_t *cli) {
             .temperature = cli->config.temperature,
             .timeout_ms = cli->config.timeout_ms > 0 ? cli->config.timeout_ms : 60000,
         },
+        .tools = tools,
         .max_iterations = cli->config.max_iterations > 0 ? cli->config.max_iterations : 5,
     };
-    
-    /* Configure tools if enabled */
-    if (cli->config.enable_tools) {
-        /* Select all available tools */
-        static const char* all_tools[] = {
-            "shell_execute",
-            "read_file",
-            "write_file",
-            "list_directory",
-            "get_current_time",
-            "calculator",
-            NULL
-        };
-        params.tools = all_tools;
-        params.tool_table = G_TOOL_TABLE;
-    }
     
     /* Create agent for interactive session */
     ac_agent_t *agent = ac_agent_create(cli->session, &params);
@@ -294,7 +282,7 @@ int minimal_cli_run_interactive(minimal_cli_t *cli) {
         }
         
         /* Send message to agent */
-        ac_agent_result_t *result = ac_agent_run_sync(agent, input);
+        ac_agent_result_t *result = ac_agent_run(agent, input);
         
         if (!result || !result->content) {
             AC_LOG_ERROR("[Error] Agent run failed");

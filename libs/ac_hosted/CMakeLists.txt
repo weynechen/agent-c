@@ -4,10 +4,10 @@
 cmake_minimum_required(VERSION 3.14)
 
 # Hosted sources
+# Note: mcp and tools have been moved to ac_core
+# skills will be redesigned separately
 set(AGENTC_HOSTED_SOURCES
     src/rules/rules.c
-    src/skills/skills.c
-    src/mcp/mcp.c
 )
 
 # Component: dotenv
@@ -128,4 +128,4 @@ install(DIRECTORY include/agentc
     FILES_MATCHING PATTERN "*.h"
 )
 
-message(STATUS "AgentC Hosted: rules, skills, mcp, markdown, dotenv built")
+message(STATUS "AgentC Hosted: rules, markdown, dotenv built")

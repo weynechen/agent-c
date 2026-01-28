@@ -6,11 +6,27 @@
  *
  * @code
  * #include <agentc.h>
+ * #include "tools_gen.h"  // MOC-generated tools
  *
  * int main(void) {
- *     ac_init();
- *     // ... use AgentC APIs ...
- *     ac_cleanup();
+ *     ac_session_t *session = ac_session_open();
+ *     
+ *     // Create tool registry
+ *     ac_tool_registry_t *tools = ac_tool_registry_create(session);
+ *     ac_tool_registry_add_array(tools, AC_TOOLS(read_file, bash));
+ *     
+ *     // Create agent
+ *     ac_agent_t *agent = ac_agent_create(session, &(ac_agent_params_t){
+ *         .name = "MyAgent",
+ *         .tools = tools,
+ *         .llm = { .model = "gpt-4o" }
+ *     });
+ *     
+ *     // Run
+ *     ac_agent_result_t *result = ac_agent_run(agent, "Hello!");
+ *     printf("%s\n", result->content);
+ *     
+ *     ac_session_close(session);
  *     return 0;
  * }
  * @endcode
@@ -19,7 +35,15 @@
 #ifndef AGENTC_H
 #define AGENTC_H
 
+/* Core headers */
 #include "agentc/error.h"
+#include "agentc/arena.h"
+#include "agentc/session.h"
+#include "agentc/agent.h"
+#include "agentc/tool.h"
+#include "agentc/mcp.h"
+#include "agentc/llm.h"
+#include "agentc/log.h"
 
 
 #ifdef __cplusplus

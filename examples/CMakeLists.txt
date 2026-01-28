@@ -76,7 +76,33 @@ if(AGENTC_USE_CURL)
   target_link_libraries(chat_tools PRIVATE CURL::libcurl)
 endif()
 
-# Example 3: Markdown rendering demo
+# Example 3: MCP Integration demo
+add_executable(chat_mcp 
+    hosted/chat_mcp.c
+    hosted/demo_tools.c
+    ${DEMO_TOOLS_GEN_C}
+)
+add_dependencies(chat_mcp chat_tools_gen)
+
+target_link_libraries(chat_mcp PRIVATE
+    ac_core::ac_core
+    agentc_dotenv
+    agentc_platform_wrap
+)
+target_include_directories(chat_mcp PRIVATE
+    ${CJSON_INCLUDE}
+    ${CMAKE_SOURCE_DIR}/external/args/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/hosted
+    ${CMAKE_CURRENT_BINARY_DIR}
+)
+if(NOT WIN32)
+  target_link_libraries(chat_mcp PRIVATE m)
+endif()
+if(AGENTC_USE_CURL)
+  target_link_libraries(chat_mcp PRIVATE CURL::libcurl)
+endif()
+
+# Example 5: Markdown rendering demo
 add_executable(chat_markdown hosted/chat_markdown.c)
 target_link_libraries(chat_markdown PRIVATE
     ac_core::ac_core
@@ -86,31 +112,18 @@ target_include_directories(chat_markdown PRIVATE
     ${CMAKE_SOURCE_DIR}/libs/ac_hosted/src
 )
 
-# Example 4: TUI chat demo with Notcurses (WeChat-style interface)
-find_package(PkgConfig QUIET)
-if(PkgConfig_FOUND)
-  pkg_check_modules(NOTCURSES notcurses)
-endif()
+# Example 6: TUI chat demo with Notcurses (WeChat-style interface)
+# NOTE: chat_tui needs to be rewritten to use the new Session/Agent API
+# Temporarily disabled until rewrite is complete
+# find_package(PkgConfig QUIET)
+# if(PkgConfig_FOUND)
+#   pkg_check_modules(NOTCURSES notcurses)
+# endif()
+# 
+# if(NOTCURSES_FOUND)
+#   add_executable(chat_tui hosted/chat_tui.c)
+#   ...
+# endif()
+message(STATUS "chat_tui: Temporarily disabled (needs API rewrite)")
 
-if(NOTCURSES_FOUND)
-  add_executable(chat_tui hosted/chat_tui.c)
-  target_link_libraries(chat_tui PRIVATE
-        ac_core::ac_core
-        agentc_dotenv
-        ${NOTCURSES_LIBRARIES}
-    )
-  target_include_directories(chat_tui PRIVATE
-        ${CJSON_INCLUDE}
-        ${NOTCURSES_INCLUDE_DIRS}
-    )
-  target_link_directories(chat_tui PRIVATE ${NOTCURSES_LIBRARY_DIRS})
-  if(AGENTC_USE_CURL)
-    target_link_libraries(chat_tui PRIVATE CURL::libcurl)
-  endif()
-  message(STATUS "Building chat_tui with Notcurses support")
-else()
-  message(STATUS "Notcurses not found, skipping chat_tui build")
-  message(STATUS "  Install with: sudo apt install libnotcurses-dev")
-endif()
-
-message(STATUS "AgentC Examples: hello, chat_demo, chat_tools, chat_markdown${NOTCURSES_FOUND}")
+message(STATUS "AgentC Examples: hello, chat_demo, chat_tools, chat_mcp, chat_markdown")

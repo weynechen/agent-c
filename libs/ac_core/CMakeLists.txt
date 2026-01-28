@@ -14,6 +14,8 @@ set(AGENTC_CORE_SOURCES
     src/llm/provider.c
     src/llm/message/message_json.c
     src/tools/tool.c
+    src/tools/tool_mcp.c
+    src/mcp/mcp.c
     src/log.c
     port/http_client.c
 )
