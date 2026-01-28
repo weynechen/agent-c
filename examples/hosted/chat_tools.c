@@ -112,13 +112,8 @@ int main(int argc, char *argv[]) {
         .instructions = 
             "You are a helpful assistant with access to tools.\n"
             "Use the available tools to help answer user questions.\n"
-            "Always use tools when they can provide accurate information.\n"
-            "For calculations, use the calculator tool.\n"
-            "For time queries, use get_current_time.\n"
-            "For weather queries, use get_weather.\n"
-            "For temperature conversion, use convert_temperature.\n"
-            "For random numbers, use random_number.",
-        .llm_params = {
+            "Always use tools when they can provide accurate information.\n",
+       .llm_params = {
             .provider = "openai",
             .model = model,
             .api_key = api_key,
