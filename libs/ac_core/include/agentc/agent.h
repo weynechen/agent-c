@@ -100,6 +100,17 @@ typedef struct {
  * @endcode
  */
 
+/*
+ * AC_TOOLS macro - default implementation supports 1 to 8 tools.
+ *
+ * NOTE: When using MOC-generated code, these macros will be replaced with
+ * dynamically generated versions that support up to N tools (where N is
+ * the total number of tools defined in your header file).
+ *
+ * The MOC-generated header uses #undef to override these defaults.
+ */
+#ifndef AC_NARG  /* Allow MOC to override */
+
 /* Helper macros for counting arguments */
 #define AC_NARG(...) AC_NARG_(__VA_ARGS__, AC_RSEQ_N())
 #define AC_NARG_(...) AC_ARG_N(__VA_ARGS__)
@@ -119,6 +130,8 @@ typedef struct {
 #define AC_TOOLS_6(a,b,c,d,e,f) ((const char*[]){#a, #b, #c, #d, #e, #f, NULL})
 #define AC_TOOLS_7(a,b,c,d,e,f,g) ((const char*[]){#a, #b, #c, #d, #e, #f, #g, NULL})
 #define AC_TOOLS_8(a,b,c,d,e,f,g,h) ((const char*[]){#a, #b, #c, #d, #e, #f, #g, #h, NULL})
+
+#endif /* AC_NARG */
 
 /*============================================================================
  * Agent Configuration

@@ -64,7 +64,7 @@ static const char *HEADER_TEMPLATE_START =
     " *============================================================================*/\n"
     "\n";
 
-static const char *HEADER_TEMPLATE_END =
+static const char *HEADER_TEMPLATE_TOOL_TABLE =
     "\n"
     "/*============================================================================\n"
     " * Tool Table\n"
@@ -109,6 +109,9 @@ static const char *HEADER_TEMPLATE_END =
     " * @return JSON array string of tool schemas (caller must free), NULL on error\n"
     " */\n"
     "char* ac_tools_schema(const char** tool_names);\n"
+    "\n";
+
+static const char *HEADER_TEMPLATE_END =
     "\n"
     "#ifdef __cplusplus\n"
     "}\n"
@@ -252,6 +255,88 @@ static const char *get_basename(const char *path) {
         return base + 1;
     }
     return path;
+}
+
+/*============================================================================
+ * AC_TOOLS Macro Generation
+ *============================================================================*/
+
+/**
+ * Generate AC_TOOLS macro system dynamically based on tool count
+ *
+ * This replaces the hardcoded macros in agent.h with dynamically generated
+ * ones that support up to N tools (where N = tool_count).
+ */
+static void generate_ac_tools_macros(FILE *out, int tool_count) {
+    /* Use at least 8, or tool_count if larger */
+    int max_n = tool_count > 8 ? tool_count : 8;
+    
+    fprintf(out, "/*============================================================================\n");
+    fprintf(out, " * AC_TOOLS Macro - Dynamically Generated\n");
+    fprintf(out, " *\n");
+    fprintf(out, " * Supports up to %d tools. Usage:\n", max_n);
+    fprintf(out, " *   .tools = AC_TOOLS(get_weather, calculator, ...)\n");
+    fprintf(out, " *============================================================================*/\n\n");
+    
+    /* Undefine any existing macros from agent.h */
+    fprintf(out, "/* Undefine existing macros to avoid conflicts */\n");
+    fprintf(out, "#ifdef AC_NARG\n");
+    fprintf(out, "#undef AC_NARG\n");
+    fprintf(out, "#undef AC_NARG_\n");
+    fprintf(out, "#undef AC_ARG_N\n");
+    fprintf(out, "#undef AC_RSEQ_N\n");
+    fprintf(out, "#undef AC_TOOLS\n");
+    fprintf(out, "#undef AC_TOOLS_N\n");
+    fprintf(out, "#undef AC_TOOLS_IMPL\n");
+    for (int i = 1; i <= 8; i++) {
+        fprintf(out, "#undef AC_TOOLS_%d\n", i);
+    }
+    fprintf(out, "#endif\n\n");
+    
+    /* Generate AC_NARG - counts variadic arguments */
+    fprintf(out, "/* Helper macros for counting arguments (supports up to %d) */\n", max_n);
+    fprintf(out, "#define AC_NARG(...) AC_NARG_(__VA_ARGS__, AC_RSEQ_N())\n");
+    fprintf(out, "#define AC_NARG_(...) AC_ARG_N(__VA_ARGS__)\n");
+    
+    /* Generate AC_ARG_N with enough parameters */
+    fprintf(out, "#define AC_ARG_N(");
+    for (int i = 1; i <= max_n; i++) {
+        fprintf(out, "_%d,", i);
+    }
+    fprintf(out, "N,...) N\n");
+    
+    /* Generate AC_RSEQ_N - reverse sequence */
+    fprintf(out, "#define AC_RSEQ_N() ");
+    for (int i = max_n; i >= 1; i--) {
+        fprintf(out, "%d%s", i, i > 1 ? "," : "");
+    }
+    fprintf(out, ",0\n\n");
+    
+    /* Generate AC_TOOLS dispatcher */
+    fprintf(out, "/* AC_TOOLS macro - supports 1 to %d tools */\n", max_n);
+    fprintf(out, "#define AC_TOOLS(...) AC_TOOLS_N(AC_NARG(__VA_ARGS__), __VA_ARGS__)\n");
+    fprintf(out, "#define AC_TOOLS_N(N, ...) AC_TOOLS_IMPL(N, __VA_ARGS__)\n");
+    fprintf(out, "#define AC_TOOLS_IMPL(N, ...) AC_TOOLS_##N(__VA_ARGS__)\n\n");
+    
+    /* Generate AC_TOOLS_1 to AC_TOOLS_N */
+    for (int n = 1; n <= max_n; n++) {
+        fprintf(out, "#define AC_TOOLS_%d(", n);
+        /* Parameter list: a,b,c,... */
+        for (int i = 0; i < n; i++) {
+            fprintf(out, "%c%s", 'a' + (i % 26), i < n - 1 ? "," : "");
+        }
+        fprintf(out, ") ((const char*[]){");
+        /* Stringify each parameter: #a, #b, #c, ... */
+        for (int i = 0; i < n; i++) {
+            fprintf(out, "#%c,", 'a' + (i % 26));
+        }
+        fprintf(out, "NULL})\n");
+    }
+    fprintf(out, "\n");
+    
+    /* Generate G_TOOL_NAMES for convenience */
+    fprintf(out, "/* Convenience: array of all tool names */\n");
+    fprintf(out, "extern const char* G_TOOL_NAMES[];\n\n");
 }
 
 /*============================================================================
@@ -474,6 +559,12 @@ int moc_generate_header(moc_ctx_t *ctx, FILE *out) {
                 ctx->tools[i].name);
     }
 
+    /* Write tool table declarations */
+    fprintf(out, "%s", HEADER_TEMPLATE_TOOL_TABLE);
+
+    /* Generate AC_TOOLS macros dynamically */
+    generate_ac_tools_macros(out, ctx->tool_count);
+
     /* Write header end */
     fprintf(out, HEADER_TEMPLATE_END, guard_name);
 
@@ -523,6 +614,14 @@ int moc_generate_source(moc_ctx_t *ctx, FILE *out) {
                 ctx->tools[i].name, ctx->tools[i].name, ctx->tools[i].name);
     }
     fprintf(out, "    { NULL, NULL, NULL }  /* Sentinel */\n");
+    fprintf(out, "};\n\n");
+
+    /* Generate G_TOOL_NAMES array */
+    fprintf(out, "const char* G_TOOL_NAMES[] = {\n");
+    for (int i = 0; i < ctx->tool_count; i++) {
+        fprintf(out, "    \"%s\",\n", ctx->tools[i].name);
+    }
+    fprintf(out, "    NULL  /* Sentinel */\n");
     fprintf(out, "};\n\n");
 
     fprintf(out, "size_t ac_tool_count(void) {\n");
