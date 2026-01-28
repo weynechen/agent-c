@@ -31,8 +31,22 @@ typedef enum {
     AGENTC_ERR_IO = -10,                /* I/O operation failed */
     AGENTC_ERR_NOT_IMPLEMENTED = -11,   /* Feature not implemented */
     AGENTC_ERR_NOT_FOUND = -12,         /* Resource not found */
-    AGENTC_ERR_NOT_CONNECTED = -13,
+    AGENTC_ERR_NOT_CONNECTED = -13,     /* Not connected */
+    AGENTC_ERR_PROTOCOL = -14,          /* Protocol error */
+    AGENTC_ERR_PARSE = -15,             /* Parse error */
 } agentc_err_t;
+
+/*============================================================================
+ * Error String (declared in agentc.h, implemented in agentc.c)
+ *============================================================================*/
+
+/**
+ * @brief Get error description string
+ *
+ * @param err  Error code
+ * @return Static string describing the error
+ */
+const char *ac_strerror(agentc_err_t err);
 
 #ifdef __cplusplus
 }

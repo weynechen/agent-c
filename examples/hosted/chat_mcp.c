@@ -91,7 +91,8 @@ int main(int argc, char *argv[]) {
     const char *model = getenv("OPENAI_MODEL");
     if (!model) model = "gpt-4o-mini";
 
-    const char *mcp_url = getenv("MCP_SERVER_URL");
+    // const char *mcp_url = getenv("MCP_SERVER_URL");
+    const char *mcp_url = "https://mcp.context7.com/mcp";
 
     printf("=== AgentC MCP Integration Demo ===\n");
     printf("Model: %s\n", model);
@@ -163,8 +164,8 @@ int main(int argc, char *argv[]) {
         
         mcp = ac_mcp_create(session, &(ac_mcp_config_t){
             .server_url = mcp_url,
-            .transport = "http",
-            .timeout_ms = 30000
+            .timeout_ms = 30000,
+            .verify_ssl = 1
         });
         
         if (mcp) {
