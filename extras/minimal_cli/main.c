@@ -91,23 +91,21 @@ static int parse_args(int argc, char **argv,
     /* Load .env file */
     env_load(".", 0);
     
-    /* Get provider from environment */
-    const char *env_provider = NULL;
-    if (getenv("ANTHROPIC_API_KEY")) {
-        env_provider = "anthropic";
-        config->api_key = getenv("ANTHROPIC_API_KEY");
-    } else if (getenv("DEEPSEEK_API_KEY")) {
-        env_provider = "deepseek";
-        config->api_key = getenv("DEEPSEEK_API_KEY");
-        config->api_base = getenv("DEEPSEEK_BASE_URL");
-    } else if (getenv("OPENAI_API_KEY")) {
-        env_provider = "openai";
-        config->api_key = getenv("OPENAI_API_KEY");
-        config->api_base = getenv("OPENAI_BASE_URL");
+ 
+    const char *api_key = getenv("OPENAI_API_KEY");
+    const char *model = getenv_default("OPENAI_MODEL", "gpt-3.5-turbo");
+    const char *base_url = getenv_default("OPENAI_BASE_URL", NULL);
+    const char *env_provider = getenv_default("PROVIDER", "openai");
+
+    if (!api_key) {
+        AC_LOG_ERROR("Error: OPENAI_API_KEY not set\n");
+        return 1;
     }
-    
+   
+    config->api_key = api_key;
+    config->model = model; 
+    config->api_base = base_url;
     config->provider = env_provider;
-    config->model = getenv("MODEL");
     
     /* Parse temperature from env */
     const char *temp_str = getenv("TEMPERATURE");
@@ -130,7 +128,7 @@ static int parse_args(int argc, char **argv,
     config->enable_stream = 1;
     
     /* Parse safe mode from env */
-    const char *safe_mode_str = getenv("SAFE_MODE");
+    const char *safe_mode_str = getenv_default("SAFE_MODE", "true");
     if (safe_mode_str && (strcmp(safe_mode_str, "true") == 0 || strcmp(safe_mode_str, "1") == 0)) {
         config->safe_mode = 1;
     }
