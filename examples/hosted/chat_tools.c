@@ -171,22 +171,6 @@ int main(int argc, char *argv[]) {
         printf("[Error] No response from agent\n\n");
     }
 
-    /* Demo: Direct tool call (bypassing agent) */
-    printf("--- Direct Tool Call Demo ---\n");
-    char *time_result = ac_tool_call("get_current_time", "{}");
-    if (time_result) {
-        printf("get_current_time() -> %s\n", time_result);
-        free(time_result);
-    }
-    
-    char *calc_result = ac_tool_call("calculator", 
-        "{\"operation\": \"multiply\", \"a\": 7, \"b\": 8}");
-    if (calc_result) {
-        printf("calculator(7 * 8) -> %s\n", calc_result);
-        free(calc_result);
-    }
-    printf("\n");
-
     /* Cleanup */
     ac_session_close(session);
     
