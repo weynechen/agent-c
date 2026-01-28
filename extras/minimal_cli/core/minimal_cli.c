@@ -1,15 +1,21 @@
 /**
  * @file minimal_cli.c
  * @brief Minimal CLI Core Implementation
+ *
+ * Uses the new MOC-based tool system with AC_TOOL_META markers.
  */
 
 #include "minimal_cli.h"
+#include "builtin_tools.h"
 #include <agentc/agent.h>
 #include <agentc/session.h>
 #include <agentc/log.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+/* Include MOC-generated tool table */
+#include "tools_gen.h"
 
 /*============================================================================
  * Application State
@@ -53,7 +59,7 @@ static const char *get_default_model(const char *provider) {
 
 minimal_cli_t *minimal_cli_create(const minimal_cli_config_t *config) {
     if (!config || !config->api_key) {
-        AC_LOG_ERROR("Invalid configuration or missing API key\n");
+        AC_LOG_ERROR("Invalid configuration or missing API key");
         return NULL;
     }
     
@@ -66,10 +72,13 @@ minimal_cli_t *minimal_cli_create(const minimal_cli_config_t *config) {
     /* Copy config */
     memcpy(&cli->config, config, sizeof(minimal_cli_config_t));
     
+    /* Configure safe mode for builtin tools */
+    builtin_tools_set_safe_mode(config->safe_mode);
+    
     /* Open session */
     cli->session = ac_session_open();
     if (!cli->session) {
-        AC_LOG_ERROR("Failed to open session\n");
+        AC_LOG_ERROR("Failed to open session");
         free(cli);
         return NULL;
     }
@@ -100,27 +109,47 @@ int minimal_cli_run_once(minimal_cli_t *cli, const char *prompt) {
     
     /* Show prompt */
     if (!cli->config.quiet) {
-        AC_LOG_INFO("[User] %s\n", prompt);
+        AC_LOG_INFO("[User] %s", prompt);
     }
     
-    /* Create agent for this request */
-    ac_agent_t *agent = ac_agent_create(cli->session, &(ac_agent_params_t){
+    /* Build agent configuration with MOC tools */
+    ac_agent_params_t params = {
         .name = "MinimalCLI",
         .instructions = 
             "You are a helpful assistant. "
-            "Provide clear and concise responses.",
+            "Provide clear and concise responses. "
+            "Use tools when appropriate to help the user.",
         .llm_params = {
             .provider = provider,
             .model = model,
             .api_key = cli->config.api_key,
             .api_base = cli->config.api_base,
+            .temperature = cli->config.temperature,
+            .timeout_ms = cli->config.timeout_ms > 0 ? cli->config.timeout_ms : 60000,
         },
-        .tools_name = cli->config.enable_tools ? "builtin" : NULL,
         .max_iterations = cli->config.max_iterations > 0 ? cli->config.max_iterations : 5,
-    });
+    };
     
+    /* Configure tools if enabled */
+    if (cli->config.enable_tools) {
+        /* Select all available tools */
+        static const char* all_tools[] = {
+            "shell_execute",
+            "read_file",
+            "write_file",
+            "list_directory",
+            "get_current_time",
+            "calculator",
+            NULL
+        };
+        params.tools = all_tools;
+        params.tool_table = G_TOOL_TABLE;
+    }
+    
+    /* Create agent */
+    ac_agent_t *agent = ac_agent_create(cli->session, &params);
     if (!agent) {
-        AC_LOG_ERROR("Failed to create agent\n");
+        AC_LOG_ERROR("Failed to create agent");
         return -1;
     }
     
@@ -128,7 +157,7 @@ int minimal_cli_run_once(minimal_cli_t *cli, const char *prompt) {
     ac_agent_result_t *result = ac_agent_run_sync(agent, prompt);
     
     if (!result || !result->content) {
-        AC_LOG_ERROR("[Error] Agent run failed\n");
+        AC_LOG_ERROR("[Error] Agent run failed");
         return -1;
     }
     
@@ -177,25 +206,45 @@ int minimal_cli_run_interactive(minimal_cli_t *cli) {
         printf("Type 'exit' or 'quit' to exit, 'help' for help.\n\n");
     }
     
-    /* Create agent for interactive session */
-    ac_agent_t *agent = ac_agent_create(cli->session, &(ac_agent_params_t){
+    /* Build agent configuration with MOC tools */
+    ac_agent_params_t params = {
         .name = "MinimalCLI",
         .instructions = 
             "You are a helpful assistant in an interactive chat. "
             "Provide clear and concise responses. "
-            "Remember the conversation context.",
+            "Remember the conversation context. "
+            "Use tools when appropriate to help the user.",
         .llm_params = {
             .provider = provider,
             .model = model,
             .api_key = cli->config.api_key,
             .api_base = cli->config.api_base,
+            .temperature = cli->config.temperature,
+            .timeout_ms = cli->config.timeout_ms > 0 ? cli->config.timeout_ms : 60000,
         },
-        .tools_name = cli->config.enable_tools ? "builtin" : NULL,
         .max_iterations = cli->config.max_iterations > 0 ? cli->config.max_iterations : 5,
-    });
+    };
     
+    /* Configure tools if enabled */
+    if (cli->config.enable_tools) {
+        /* Select all available tools */
+        static const char* all_tools[] = {
+            "shell_execute",
+            "read_file",
+            "write_file",
+            "list_directory",
+            "get_current_time",
+            "calculator",
+            NULL
+        };
+        params.tools = all_tools;
+        params.tool_table = G_TOOL_TABLE;
+    }
+    
+    /* Create agent for interactive session */
+    ac_agent_t *agent = ac_agent_create(cli->session, &params);
     if (!agent) {
-        AC_LOG_ERROR("Failed to create agent\n");
+        AC_LOG_ERROR("Failed to create agent");
         return -1;
     }
     
@@ -233,6 +282,13 @@ int minimal_cli_run_interactive(minimal_cli_t *cli) {
             printf("Commands:\n");
             printf("  exit, quit  - Exit interactive mode\n");
             printf("  help        - Show this help message\n");
+            printf("\nAvailable tools:\n");
+            printf("  shell_execute   - Execute shell commands\n");
+            printf("  read_file       - Read file contents\n");
+            printf("  write_file      - Write file contents\n");
+            printf("  list_directory  - List directory contents\n");
+            printf("  get_current_time - Get current date and time\n");
+            printf("  calculator      - Perform arithmetic calculations\n");
             printf("\n");
             continue;
         }
@@ -241,7 +297,7 @@ int minimal_cli_run_interactive(minimal_cli_t *cli) {
         ac_agent_result_t *result = ac_agent_run_sync(agent, input);
         
         if (!result || !result->content) {
-            AC_LOG_ERROR("[Error] Agent run failed\n");
+            AC_LOG_ERROR("[Error] Agent run failed");
             continue;
         }
         
