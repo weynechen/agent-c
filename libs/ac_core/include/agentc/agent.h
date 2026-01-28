@@ -38,6 +38,89 @@ typedef struct {
 } ac_agent_result_t;
 
 /*============================================================================
+ * Tool Entry (from MOC-generated code)
+ *============================================================================*/
+
+#ifndef AC_TOOL_ENTRY_DEFINED
+#define AC_TOOL_ENTRY_DEFINED
+
+/**
+ * @brief Wrapper function signature for tool execution
+ *
+ * @param json_args  JSON string containing function arguments
+ * @return JSON string result (caller must free)
+ */
+typedef char* (*ac_tool_wrapper_t)(const char* json_args);
+
+/**
+ * @brief Tool registry entry (compatible with MOC-generated G_TOOL_TABLE)
+ */
+typedef struct {
+    const char* name;           /**< Function name */
+    const char* schema;         /**< JSON Schema for parameters */
+    ac_tool_wrapper_t wrapper;  /**< Wrapper function pointer */
+} ac_tool_entry_t;
+
+#endif /* AC_TOOL_ENTRY_DEFINED */
+
+/*============================================================================
+ * Tool Selection Macros
+ *============================================================================*/
+
+/**
+ * @brief Stringify a single function name to tool name string
+ *
+ * Usage:
+ * @code
+ * const char* tool = AC_TOOL(get_weather);  // -> "get_weather"
+ * @endcode
+ */
+#define AC_TOOL(func) #func
+
+/**
+ * @brief Create a NULL-terminated tool name array
+ *
+ * Usage (preferred - explicit strings):
+ * @code
+ * .tools = (const char*[]){ "get_weather", "calculator", NULL }
+ * @endcode
+ *
+ * Or using AC_TOOL macro for each function:
+ * @code
+ * .tools = (const char*[]){ 
+ *     AC_TOOL(get_weather), 
+ *     AC_TOOL(calculator), 
+ *     NULL 
+ * }
+ * @endcode
+ *
+ * Or using the convenience macro for up to 8 tools:
+ * @code
+ * .tools = AC_TOOLS(get_weather, calculator)
+ * @endcode
+ */
+
+/* Helper macros for counting arguments */
+#define AC_NARG(...) AC_NARG_(__VA_ARGS__, AC_RSEQ_N())
+#define AC_NARG_(...) AC_ARG_N(__VA_ARGS__)
+#define AC_ARG_N(_1,_2,_3,_4,_5,_6,_7,_8,N,...) N
+#define AC_RSEQ_N() 8,7,6,5,4,3,2,1,0
+
+/* AC_TOOLS macro - supports 1 to 8 tools */
+#define AC_TOOLS(...) AC_TOOLS_N(AC_NARG(__VA_ARGS__), __VA_ARGS__)
+#define AC_TOOLS_N(N, ...) AC_TOOLS_IMPL(N, __VA_ARGS__)
+#define AC_TOOLS_IMPL(N, ...) AC_TOOLS_##N(__VA_ARGS__)
+
+#define AC_TOOLS_1(a) ((const char*[]){#a, NULL})
+#define AC_TOOLS_2(a,b) ((const char*[]){#a, #b, NULL})
+#define AC_TOOLS_3(a,b,c) ((const char*[]){#a, #b, #c, NULL})
+#define AC_TOOLS_4(a,b,c,d) ((const char*[]){#a, #b, #c, #d, NULL})
+#define AC_TOOLS_5(a,b,c,d,e) ((const char*[]){#a, #b, #c, #d, #e, NULL})
+#define AC_TOOLS_6(a,b,c,d,e,f) ((const char*[]){#a, #b, #c, #d, #e, #f, NULL})
+#define AC_TOOLS_7(a,b,c,d,e,f,g) ((const char*[]){#a, #b, #c, #d, #e, #f, #g, NULL})
+#define AC_TOOLS_8(a,b,c,d,e,f,g,h) ((const char*[]){#a, #b, #c, #d, #e, #f, #g, #h, NULL})
+
+/*============================================================================
  * Agent Configuration
  *============================================================================*/
 
@@ -45,7 +128,11 @@ typedef struct {
     const char* name;               /* Agent name (optional) */
     const char* instructions;       /* Agent instructions (optional) */
     ac_llm_params_t llm_params;     /* LLM configuration */
-    const char* tools_name;         /* Tool group name (optional, e.g., "weather") */
+    
+    /* Tool configuration - use one of the following: */
+    const char** tools;             /* Tool names array (NULL-terminated), use AC_TOOLS() macro */
+    const ac_tool_entry_t* tool_table;  /* Global tool table (MOC-generated G_TOOL_TABLE) */
+    
     int max_iterations;             /* Max ReACT loops (default: 10) */
 } ac_agent_params_t;
 
@@ -61,6 +148,8 @@ typedef struct {
  *
  * Example:
  * @code
+ * #include "tools_gen.h"  // MOC-generated header
+ * 
  * ac_session_t* session = ac_session_open();
  * 
  * ac_agent_t* agent = ac_agent_create(session, &(ac_agent_params_t){
@@ -69,9 +158,9 @@ typedef struct {
  *     .llm_params = {
  *         .model = "gpt-4o-mini",
  *         .api_key = getenv("OPENAI_API_KEY"),
- *         .instructions = "Be concise"
  *     },
- *     .tools_name = "weather",
+ *     .tools = AC_TOOLS(get_weather, calculator),  // Select tools by name
+ *     .tool_table = G_TOOL_TABLE,                  // MOC-generated table
  *     .max_iterations = 10
  * });
  * 

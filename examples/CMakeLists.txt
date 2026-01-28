@@ -35,8 +35,29 @@ if(AGENTC_USE_CURL)
   target_link_libraries(chat_demo PRIVATE CURL::libcurl)
 endif()
 
-# Example 2: Tool calling / ReACT Agent demo
-add_executable(chat_tools hosted/chat_tools.c)
+# Example 2: Tool calling / ReACT Agent demo with MOC integration
+# First, generate tool wrappers using MOC
+set(DEMO_TOOLS_H ${CMAKE_CURRENT_SOURCE_DIR}/hosted/demo_tools.h)
+set(DEMO_TOOLS_GEN_H ${CMAKE_CURRENT_BINARY_DIR}/demo_tools_gen.h)
+set(DEMO_TOOLS_GEN_C ${CMAKE_CURRENT_BINARY_DIR}/demo_tools_gen.c)
+
+add_custom_command(
+    OUTPUT ${DEMO_TOOLS_GEN_H} ${DEMO_TOOLS_GEN_C}
+    COMMAND moc -o "${CMAKE_CURRENT_BINARY_DIR}/demo_tools_gen" "${DEMO_TOOLS_H}"
+    DEPENDS moc ${DEMO_TOOLS_H}
+    COMMENT "Generating tool wrappers with MOC for chat_tools"
+    VERBATIM
+)
+
+add_custom_target(chat_tools_gen DEPENDS ${DEMO_TOOLS_GEN_H} ${DEMO_TOOLS_GEN_C})
+
+add_executable(chat_tools 
+    hosted/chat_tools.c
+    hosted/demo_tools.c
+    ${DEMO_TOOLS_GEN_C}
+)
+add_dependencies(chat_tools chat_tools_gen)
+
 target_link_libraries(chat_tools PRIVATE
     ac_core::ac_core
     agentc_dotenv
@@ -45,6 +66,8 @@ target_link_libraries(chat_tools PRIVATE
 target_include_directories(chat_tools PRIVATE
     ${CJSON_INCLUDE}
     ${CMAKE_SOURCE_DIR}/external/args/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/hosted
+    ${CMAKE_CURRENT_BINARY_DIR}
 )
 if(NOT WIN32)
   target_link_libraries(chat_tools PRIVATE m)

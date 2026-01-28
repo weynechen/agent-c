@@ -12,6 +12,7 @@ set(AGENTC_CORE_SOURCES
     src/memory/message.c
     src/llm/llm.c
     src/llm/provider.c
+    src/llm/message/message_json.c
     src/tools/tool.c
     src/log.c
     port/http_client.c

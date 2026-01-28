@@ -1,8 +1,9 @@
 /**
  * @file chat_tools.c
- * @brief ReACT Agent demo with tool calling (Updated for new API)
+ * @brief ReACT Agent demo with MOC-generated tool calling
  *
- * Demonstrates how to use the AgentC ReACT loop with custom tools.
+ * This example demonstrates how to use MOC (Meta-Object Compiler) generated
+ * tool wrappers with the AgentC framework.
  *
  * Usage:
  *   ./chat_tools "What time is it?"
@@ -10,14 +11,13 @@
  *   ./chat_tools "What's the weather in Beijing?"
  */
 
-#include "agentc/platform.h"
-#include <agentc.h>
-#include <cJSON.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
-#include <math.h>
+
+#include "agentc/session.h"
+#include "agentc/agent.h"
+#include "agentc/log.h"
 
 /* Platform wrapper for terminal UTF-8 support and argument encoding */
 #include "platform_wrap.h"
@@ -25,211 +25,33 @@
 /* dotenv for loading .env file */
 #include "dotenv.h"
 
-/*============================================================================
- * Tool Implementations
- *============================================================================*/
+/* MOC-generated tool wrappers and table */
+#include "demo_tools_gen.h"
 
-/**
- * Tool: get_current_time
- * Returns the current date and time
- */
-static agentc_err_t tool_get_current_time(
-    const cJSON *args,
-    char **output,
-    void *user_data
-) {
-    (void)args;
-    (void)user_data;
-
-    time_t now = time(NULL);
-    struct tm *tm_info = localtime(&now);
-
-    char time_buf[64];
-    strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", tm_info);
-
-    char result[128];
-    snprintf(result, sizeof(result),
-        "{\"current_time\": \"%s\", \"timezone\": \"local\"}",
-        time_buf);
-
-    *output = strdup(result);
-    return AGENTC_OK;
-}
-
-/**
- * Tool: calculator
- * Performs basic arithmetic operations
- */
-static agentc_err_t tool_calculator(
-    const cJSON *args,
-    char **output,
-    void *user_data
-) {
-    (void)user_data;
-
-    cJSON *op = cJSON_GetObjectItem(args, "operation");
-    cJSON *a = cJSON_GetObjectItem(args, "a");
-    cJSON *b = cJSON_GetObjectItem(args, "b");
-
-    if (!op || !cJSON_IsString(op) || !a || !cJSON_IsNumber(a) || !b || !cJSON_IsNumber(b)) {
-        *output = strdup("{\"error\": \"Invalid arguments. Need operation, a, b\"}");
-        return AGENTC_OK;
-    }
-
-    double num_a = a->valuedouble;
-    double num_b = b->valuedouble;
-    double result = 0;
-    const char *operation = op->valuestring;
-
-    if (strcmp(operation, "add") == 0 || strcmp(operation, "+") == 0) {
-        result = num_a + num_b;
-    } else if (strcmp(operation, "subtract") == 0 || strcmp(operation, "-") == 0) {
-        result = num_a - num_b;
-    } else if (strcmp(operation, "multiply") == 0 || strcmp(operation, "*") == 0) {
-        result = num_a * num_b;
-    } else if (strcmp(operation, "divide") == 0 || strcmp(operation, "/") == 0) {
-        if (num_b == 0) {
-            *output = strdup("{\"error\": \"Division by zero\"}");
-            return AGENTC_OK;
-        }
-        result = num_a / num_b;
-    } else if (strcmp(operation, "power") == 0 || strcmp(operation, "^") == 0) {
-        result = pow(num_a, num_b);
-    } else if (strcmp(operation, "mod") == 0 || strcmp(operation, "%") == 0) {
-        result = fmod(num_a, num_b);
-    } else {
-        *output = strdup("{\"error\": \"Unknown operation. Use: add, subtract, multiply, divide, power, mod\"}");
-        return AGENTC_OK;
-    }
-
-    char buf[128];
-    snprintf(buf, sizeof(buf),
-        "{\"operation\": \"%s\", \"a\": %g, \"b\": %g, \"result\": %g}",
-        operation, num_a, num_b, result);
-
-    *output = strdup(buf);
-    return AGENTC_OK;
-}
-
-/**
- * Tool: get_weather (mock)
- * Returns simulated weather data
- */
-static agentc_err_t tool_get_weather(
-    const cJSON *args,
-    char **output,
-    void *user_data
-) {
-    (void)user_data;
-
-    cJSON *location = cJSON_GetObjectItem(args, "location");
-    if (!location || !cJSON_IsString(location)) {
-        *output = strdup("{\"error\": \"location is required\"}");
-        return AGENTC_OK;
-    }
-
-    const char *city = location->valuestring;
-
-    /* Mock weather data based on city name hash */
-    unsigned int hash = 0;
-    for (const char *p = city; *p; p++) {
-        hash = hash * 31 + (unsigned char)*p;
-    }
-
-    int temp = 15 + (hash % 20);  /* 15-35°C */
-    int humidity = 40 + (hash % 40);  /* 40-80% */
-    const char *conditions[] = {"sunny", "cloudy", "rainy", "windy", "snowy"};
-    const char *condition = conditions[hash % 5];
-
-    char buf[256];
-    snprintf(buf, sizeof(buf),
-        "{\"location\": \"%s\", \"temperature\": %d, \"unit\": \"celsius\", "
-        "\"humidity\": %d, \"condition\": \"%s\"}",
-        city, temp, humidity, condition);
-
-    *output = strdup(buf);
-    return AGENTC_OK;
-}
-
-/*============================================================================
- * Tool Registration
- *============================================================================*/
-
-static ac_tools_t *create_tools(void) {
-    ac_tools_t *tools = ac_tools_create();
-    if (!tools) return NULL;
-
-    /* Tool 1: get_current_time */
-    {
-        ac_tool_t tool = {
-            .name = "get_current_time",
-            .description = "Get the current date and time",
-            .parameters = NULL,  /* No parameters */
-            .handler = tool_get_current_time,
-        };
-        ac_tool_register(tools, &tool);
-    }
-
-    /* Tool 2: calculator */
-    {
-        ac_param_t *params = NULL;
-
-        ac_param_t *op = ac_param_create("operation", AC_PARAM_STRING,
-            "The operation to perform: add, subtract, multiply, divide, power, mod", 1);
-        op->enum_values = strdup("add,subtract,multiply,divide,power,mod");
-        ac_param_append(&params, op);
-
-        ac_param_t *a = ac_param_create("a", AC_PARAM_NUMBER,
-            "First operand", 1);
-        ac_param_append(&params, a);
-
-        ac_param_t *b = ac_param_create("b", AC_PARAM_NUMBER,
-            "Second operand", 1);
-        ac_param_append(&params, b);
-
-        ac_tool_t tool = {
-            .name = "calculator",
-            .description = "Perform basic arithmetic calculations",
-            .parameters = params,
-            .handler = tool_calculator,
-        };
-        ac_tool_register(tools, &tool);
-        ac_param_free(params);
-    }
-
-    /* Tool 3: get_weather */
-    {
-        ac_param_t *params = ac_param_create("location", AC_PARAM_STRING,
-            "The city or location to get weather for", 1);
-
-        ac_tool_t tool = {
-            .name = "get_weather",
-            .description = "Get the current weather for a location",
-            .parameters = params,
-            .handler = tool_get_weather,
-        };
-        ac_tool_register(tools, &tool);
-        ac_param_free(params);
-    }
-
-    return tools;
-}
+/* Original tool declarations (for reference) */
+#include "demo_tools.h"
 
 /*============================================================================
  * Main
  *============================================================================*/
 
 static void print_usage(const char *prog) {
-    AC_LOG_INFO("Usage: %s <prompt>\n\n", prog);
-    AC_LOG_INFO("Examples:\n");
-    AC_LOG_INFO("  %s \"What time is it?\"\n", prog);
-    AC_LOG_INFO("  %s \"Calculate 123 * 456\"\n", prog);
-    AC_LOG_INFO("  %s \"What's the weather in Tokyo?\"\n", prog);
-    AC_LOG_INFO("  %s \"What's 2^10 and what time is it now?\"\n", prog);
-    AC_LOG_INFO("\nEnvironment:\n");
-    AC_LOG_INFO("  OPENAI_API_KEY    - OpenAI API key (required)\n");
-    AC_LOG_INFO("  OPENAI_BASE_URL   - API base URL (optional)\n");
-    AC_LOG_INFO("  OPENAI_MODEL      - Model name (default: gpt-4o-mini)\n");
+    printf("Usage: %s <prompt>\n\n", prog);
+    printf("AgentC Tool Demo with MOC-generated tools\n\n");
+    printf("Examples:\n");
+    printf("  %s \"What time is it?\"\n", prog);
+    printf("  %s \"Calculate 123 * 456\"\n", prog);
+    printf("  %s \"What's the weather in Tokyo?\"\n", prog);
+    printf("  %s \"Convert 100 fahrenheit to celsius\"\n", prog);
+    printf("  %s \"Give me a random number between 1 and 100\"\n", prog);
+    printf("\nEnvironment:\n");
+    printf("  OPENAI_API_KEY    - OpenAI API key (required)\n");
+    printf("  OPENAI_BASE_URL   - API base URL (optional)\n");
+    printf("  OPENAI_MODEL      - Model name (default: gpt-4o-mini)\n");
+    printf("\nAvailable tools:\n");
+    for (size_t i = 0; G_TOOL_TABLE[i].name != NULL; i++) {
+        printf("  - %s\n", G_TOOL_TABLE[i].name);
+    }
 }
 
 int main(int argc, char *argv[]) {
@@ -242,17 +64,19 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    /* Get UTF-8 encoded command line arguments (handles Windows encoding issues) */
+    /* Get UTF-8 encoded command line arguments */
     char **utf8_argv = platform_get_argv_utf8(argc, argv);
     const char *user_prompt = utf8_argv[1];
 
     /* Load .env file */
     env_load(".", 0);
 
-    /* Get API key */
+    /* Get API configuration */
     const char *api_key = getenv("OPENAI_API_KEY");
     if (!api_key || strlen(api_key) == 0) {
-        AC_LOG_ERROR( "Error: OPENAI_API_KEY environment variable is not set\n");
+        AC_LOG_ERROR("Error: OPENAI_API_KEY environment variable is not set\n");
+        platform_free_argv_utf8(utf8_argv, argc);
+        platform_cleanup_terminal();
         return 1;
     }
 
@@ -260,103 +84,114 @@ int main(int argc, char *argv[]) {
     const char *model = getenv("OPENAI_MODEL");
     if (!model) model = "gpt-4o-mini";
 
-    /* Initialize AgentC */
-    agentc_err_t err = ac_init();
-    if (err != AGENTC_OK) {
-        AC_LOG_ERROR( "Failed to initialize AgentC: %s\n", ac_strerror(err));
+    printf("=== AgentC Tool Demo (MOC Integration) ===\n");
+    printf("Model: %s\n", model);
+    if (base_url) printf("URL: %s\n", base_url);
+    printf("Tools: %zu available, using selected subset\n\n", ac_tool_count());
+
+    /* Open session */
+    ac_session_t *session = ac_session_open();
+    if (!session) {
+        AC_LOG_ERROR("Failed to open session\n");
+        platform_free_argv_utf8(utf8_argv, argc);
+        platform_cleanup_terminal();
         return 1;
     }
 
-    AC_LOG_INFO("AgentC Tool Demo (New API)\n");
-    AC_LOG_INFO("Model: %s\n", model);
-    if (base_url) AC_LOG_INFO("URL: %s\n", base_url);
-
-    /* Create LLM client */
-    ac_llm_t *llm = ac_llm_create(&(ac_llm_params_t){
-        .model = model,
-        .api_key = api_key,
-        .api_base = base_url,
+    /*
+     * Create agent with selected tools using AC_TOOLS macro.
+     * 
+     * This demonstrates the key feature: selecting a subset of tools
+     * from the global G_TOOL_TABLE for this specific agent.
+     * 
+     * Format: AC_TOOLS(func1, func2, func3, ...)
+     * The macro converts function names to strings automatically.
+     */
+    ac_agent_t *agent = ac_agent_create(session, &(ac_agent_params_t){
+        .name = "ToolAgent",
         .instructions = 
             "You are a helpful assistant with access to tools.\n"
             "Use the available tools to help answer user questions.\n"
             "Always use tools when they can provide accurate information.\n"
             "For calculations, use the calculator tool.\n"
             "For time queries, use get_current_time.\n"
-            "For weather queries, use get_weather.",
-        .temperature = 0.7f,
-        .timeout_ms = 60000,
-    });
-
-    if (!llm) {
-        AC_LOG_ERROR( "Failed to create LLM client\n");
-        ac_cleanup();
-        return 1;
-    }
-
-    /* Create tools */
-    ac_tools_t *tools = create_tools();
-    if (!tools) {
-        AC_LOG_ERROR( "Failed to create tool registry\n");
-        ac_llm_destroy(llm);
-        ac_cleanup();
-        return 1;
-    }
-
-    AC_LOG_INFO("Tools: %zu registered\n", ac_tool_count(tools));
-
-    /* Create agent */
-    ac_agent_t *agent = ac_agent_create(&(ac_agent_params_t){
-        .name = "ToolAgent",
-        .llm = llm,
-        .tools = tools,
-        .memory = NULL,
-        .max_iterations = 5,
-        .timeout_ms = 0,
+            "For weather queries, use get_weather.\n"
+            "For temperature conversion, use convert_temperature.\n"
+            "For random numbers, use random_number.",
+        .llm_params = {
+            .provider = "openai",
+            .model = model,
+            .api_key = api_key,
+            .api_base = base_url,
+        },
+        /* 
+         * Select tools for this agent using AC_TOOLS macro.
+         * This agent uses all 5 available tools:
+         */
+        .tools = AC_TOOLS(get_current_time, calculator, get_weather, convert_temperature, random_number),
+        .tool_table = G_TOOL_TABLE,
+        .max_iterations = 10
     });
 
     if (!agent) {
-        AC_LOG_ERROR( "Failed to create agent\n");
-        ac_tools_destroy(tools);
-        ac_llm_destroy(llm);
-        ac_cleanup();
+        AC_LOG_ERROR("Failed to create agent\n");
+        ac_session_close(session);
+        platform_free_argv_utf8(utf8_argv, argc);
+        platform_cleanup_terminal();
         return 1;
     }
 
-    /* Run agent with user input */
-    AC_LOG_INFO("[User]%s\n", user_prompt);
-    
-    ac_agent_result_t result = {0};
-    err = ac_agent_run_sync(agent, user_prompt, &result);
-    
-    if (err != AGENTC_OK) {
-        AC_LOG_ERROR( "[Error] Agent run failed: %s\n", ac_strerror(err));
-    }
-
-    /* Show final output */
-    if (result.status == AC_RUN_SUCCESS && result.response) {
-        AC_LOG_INFO("[Assistant]%s\n\n", result.response);
-    } else if (result.status == AC_RUN_MAX_ITERATIONS) {
-        AC_LOG_WARN("Hit max iterations limit\n");
-        if (result.response) {
-            AC_LOG_INFO("%s\n", result.response);
+    /* Show selected tools */
+    printf("Selected tools for this agent:\n");
+    const char *selected[] = {"get_current_time", "calculator", "get_weather", 
+                              "convert_temperature", "random_number", NULL};
+    for (const char **p = selected; *p; p++) {
+        const ac_tool_entry_t *tool = ac_tool_find(*p);
+        if (tool) {
+            printf("  [OK] %s\n", tool->name);
         }
-    } else if (result.status == AC_RUN_ERROR) {
-        AC_LOG_ERROR( "[Error] Run failed with error code %d\n", 
-                result.error_code);
+    }
+    printf("\n");
+
+    /* Get combined schema for selected tools */
+    char *schema = ac_tools_schema(selected);
+    if (schema) {
+        printf("Tools schema length: %zu bytes\n\n", strlen(schema));
+        free(schema);
     }
 
-    AC_LOG_INFO("iterations=%d, tokens=%d, status=%d\n",
-        result.iterations, result.total_tokens, result.status);
+    /* Run agent with user input */
+    printf("[User] %s\n\n", user_prompt);
+    
+    ac_agent_result_t *result = ac_agent_run_sync(agent, user_prompt);
+    
+    if (result && result->content) {
+        printf("[Assistant] %s\n\n", result->content);
+    } else {
+        printf("[Error] No response from agent\n\n");
+    }
+
+    /* Demo: Direct tool call (bypassing agent) */
+    printf("--- Direct Tool Call Demo ---\n");
+    char *time_result = ac_tool_call("get_current_time", "{}");
+    if (time_result) {
+        printf("get_current_time() -> %s\n", time_result);
+        free(time_result);
+    }
+    
+    char *calc_result = ac_tool_call("calculator", 
+        "{\"operation\": \"multiply\", \"a\": 7, \"b\": 8}");
+    if (calc_result) {
+        printf("calculator(7 * 8) -> %s\n", calc_result);
+        free(calc_result);
+    }
+    printf("\n");
 
     /* Cleanup */
-    ac_agent_result_free(&result);
-    ac_agent_destroy(agent);
-    ac_tools_destroy(tools);
-    ac_llm_destroy(llm);
-    ac_cleanup();
+    ac_session_close(session);
     
     platform_free_argv_utf8(utf8_argv, argc);
     platform_cleanup_terminal();
 
-    return (err == AGENTC_OK && result.status == AC_RUN_SUCCESS) ? 0 : 1;
+    return 0;
 }

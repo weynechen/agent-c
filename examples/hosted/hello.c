@@ -41,7 +41,8 @@ int main(void) {
             .api_key = api_key,
             .api_base = base_url,
         },
-        .tools_name = NULL,
+        .tools = NULL,
+        .tool_table = NULL,
         .max_iterations = 10
     });
     

@@ -37,6 +37,12 @@ typedef struct {
     const char* api_key;            /* API key (required) */
     const char* api_base;           /* API base URL (optional) */
     const char* instructions;       /* System instructions (optional) */
+    
+    /* Generation parameters */
+    float temperature;              /* Sampling temperature (0.0-2.0, default: 0.7) */
+    float top_p;                    /* Nucleus sampling (0.0-1.0) */
+    int max_tokens;                 /* Max tokens to generate (0 = no limit) */
+    int timeout_ms;                 /* Request timeout in ms (default: 60000) */
 } ac_llm_params_t;
 
 /*============================================================================
@@ -56,16 +62,35 @@ typedef struct {
 ac_llm_t* ac_llm_create(arena_t* arena, const ac_llm_params_t* params);
 
 /**
- * @brief Chat with LLM
+ * @brief Chat with LLM (simple, text-only)
  *
- * Sends message history to the LLM and returns the response.
+ * Sends message history to the LLM and returns the text response.
  * The response is allocated from the LLM's arena.
  *
  * @param llm       LLM handle
  * @param messages  Message history (linked list)
- * @return Response (allocated from arena), NULL on error
+ * @return Response text (allocated from arena), NULL on error
  */
 char* ac_llm_chat(ac_llm_t* llm, const ac_message_t* messages);
+
+/**
+ * @brief Chat with LLM with tool support
+ *
+ * Sends message history with optional tools to the LLM.
+ * Returns structured response that may include tool calls.
+ *
+ * @param llm       LLM handle
+ * @param messages  Message history (linked list)
+ * @param tools     JSON array of tool definitions (NULL for no tools)
+ * @param response  Output response structure (caller must call ac_chat_response_free)
+ * @return AGENTC_OK on success
+ */
+agentc_err_t ac_llm_chat_with_tools(
+    ac_llm_t* llm,
+    const ac_message_t* messages,
+    const char* tools,
+    ac_chat_response_t* response
+);
 
 /**
  * @brief Cleanup LLM resources

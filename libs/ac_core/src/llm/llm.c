@@ -4,9 +4,11 @@
  */
 
 #include "agentc/llm.h"
+#include "agentc/message.h"
 #include "agentc/log.h"
 #include "llm_internal.h"
 #include "llm_provider.h"
+#include "message/message_json.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -82,45 +84,65 @@ void ac_llm_cleanup(ac_llm_t* llm) {
     }
 }
 
-char* ac_llm_chat(ac_llm_t* llm, const ac_message_t* messages) {
-    if (!llm || !llm->arena || !llm->provider) {
-        AC_LOG_ERROR("Invalid LLM state");
-        return NULL;
-    }
-    
-    if (!messages) {
-        AC_LOG_ERROR("Messages is NULL");
-        return NULL;
-    }
-    
-    // Allocate response buffer from arena
-    // TODO: Make this dynamic based on actual response size
-    char* response = (char*)arena_alloc(llm->arena, 4096);
-    if (!response) {
-        AC_LOG_ERROR("Failed to allocate response buffer from arena");
-        return NULL;
+agentc_err_t ac_llm_chat_with_tools(
+    ac_llm_t* llm,
+    const ac_message_t* messages,
+    const char* tools,
+    ac_chat_response_t* response
+) {
+    if (!llm || !llm->provider || !response) {
+        AC_LOG_ERROR("Invalid arguments to ac_llm_chat_with_tools");
+        return AGENTC_ERR_INVALID_ARG;
     }
     
     // Call provider
     if (!llm->provider->chat) {
         AC_LOG_ERROR("Provider %s does not implement chat", llm->provider->name);
-        return NULL;
+        return AGENTC_ERR_INVALID_ARG;
     }
     
     agentc_err_t err = llm->provider->chat(
         llm->priv,
         &llm->params,
         messages,
-        response,
-        4096
+        tools,
+        response
     );
     
     if (err != AGENTC_OK) {
         AC_LOG_ERROR("Provider chat failed: %d", err);
+        return err;
+    }
+    
+    AC_LOG_DEBUG("LLM chat completed: content=%s, tool_calls=%d",
+                 response->content ? "yes" : "no",
+                 response->tool_call_count);
+    
+    return AGENTC_OK;
+}
+
+char* ac_llm_chat(ac_llm_t* llm, const ac_message_t* messages) {
+    if (!llm || !llm->arena) {
+        AC_LOG_ERROR("Invalid LLM state");
         return NULL;
     }
     
-    AC_LOG_DEBUG("LLM chat completed");
+    ac_chat_response_t response;
+    ac_chat_response_init(&response);
     
-    return response;
+    agentc_err_t err = ac_llm_chat_with_tools(llm, messages, NULL, &response);
+    if (err != AGENTC_OK) {
+        return NULL;
+    }
+    
+    // Copy content to arena so it lives with the agent
+    char* result = NULL;
+    if (response.content) {
+        result = arena_strdup(llm->arena, response.content);
+    }
+    
+    // Free response (content was copied to arena)
+    ac_chat_response_free(&response);
+    
+    return result;
 }

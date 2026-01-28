@@ -39,21 +39,21 @@ typedef struct ac_llm_ops {
     void* (*create)(const ac_llm_params_t* params);
     
     /**
-     * @brief Perform chat completion
+     * @brief Perform chat completion with optional tool support
      * 
      * @param priv Provider private data (returned by create)
      * @param params LLM parameters
      * @param messages Message history (linked list)
-     * @param response_buffer Buffer for response (allocated by caller)
-     * @param buffer_size Size of response buffer
+     * @param tools JSON array of tool definitions (NULL if no tools)
+     * @param response Structured response output
      * @return AGENTC_OK on success
      */
     agentc_err_t (*chat)(
         void* priv,
         const ac_llm_params_t* params,
         const ac_message_t* messages,
-        char* response_buffer,
-        size_t buffer_size
+        const char* tools,
+        ac_chat_response_t* response
     );
     
     /**

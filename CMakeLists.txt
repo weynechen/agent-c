@@ -165,7 +165,8 @@ if(AGENTC_PROFILE STREQUAL "hosted")
     add_subdirectory(external/args)
 endif()
 
-if(AGENTC_BUILD_TOOLS)
+# Always build tools if examples are enabled (MOC is needed for examples)
+if(AGENTC_BUILD_TOOLS OR AGENTC_BUILD_EXAMPLES)
     add_subdirectory(tools)
 endif()
 

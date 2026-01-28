@@ -7,6 +7,7 @@
  */
 
 #include "../llm_provider.h"
+#include "../message/message_json.h"
 #include "agentc/message.h"
 #include "agentc/platform.h"
 #include "agentc/log.h"
@@ -58,12 +59,14 @@ static agentc_err_t anthropic_chat(
     void* priv_data,
     const ac_llm_params_t* params,
     const ac_message_t* messages,
-    char* response_buffer,
-    size_t buffer_size
+    const char* tools,
+    ac_chat_response_t* response
 ) {
-    if (!priv_data || !params || !messages || !response_buffer) {
+    if (!priv_data || !params || !response) {
         return AGENTC_ERR_INVALID_ARG;
     }
+    
+    (void)tools;  /* TODO: Implement Anthropic tool calling */
     
     anthropic_priv_t* priv = (anthropic_priv_t*)priv_data;
     
@@ -79,7 +82,7 @@ static agentc_err_t anthropic_chat(
     }
     
     cJSON_AddStringToObject(root, "model", params->model);
-    cJSON_AddNumberToObject(root, "max_tokens", 4096);  // Anthropic requires this
+    cJSON_AddNumberToObject(root, "max_tokens", params->max_tokens > 0 ? params->max_tokens : 4096);
     
     /* Anthropic uses separate system field, not in messages */
     if (params->instructions) {
@@ -90,7 +93,7 @@ static agentc_err_t anthropic_chat(
     cJSON* msgs_arr = cJSON_AddArrayToObject(root, "messages");
     
     for (const ac_message_t* msg = messages; msg; msg = msg->next) {
-        // Skip system messages (handled separately)
+        /* Skip system messages (handled separately) */
         if (msg->role == AC_ROLE_SYSTEM) {
             continue;
         }
@@ -128,7 +131,7 @@ static agentc_err_t anthropic_chat(
         .headers = headers,
         .body = body,
         .body_len = strlen(body),
-        .timeout_ms = 60000,
+        .timeout_ms = params->timeout_ms > 0 ? params->timeout_ms : 60000,
         .verify_ssl = 1,
     };
     
@@ -162,6 +165,9 @@ static agentc_err_t anthropic_chat(
         return AGENTC_ERR_HTTP;
     }
     
+    /* Initialize response */
+    ac_chat_response_init(response);
+    
     /* Extract content from content[0].text */
     cJSON* content_arr = cJSON_GetObjectItem(resp_root, "content");
     if (!content_arr || !cJSON_IsArray(content_arr) || cJSON_GetArraySize(content_arr) == 0) {
@@ -174,21 +180,30 @@ static agentc_err_t anthropic_chat(
     cJSON* content_item = cJSON_GetArrayItem(content_arr, 0);
     cJSON* text = cJSON_GetObjectItem(content_item, "text");
     
-    if (!text || !cJSON_IsString(text)) {
-        AC_LOG_ERROR("No text in Anthropic response");
-        cJSON_Delete(resp_root);
-        agentc_http_response_free(&http_resp);
-        return AGENTC_ERR_HTTP;
+    if (text && cJSON_IsString(text)) {
+        response->content = AGENTC_STRDUP(cJSON_GetStringValue(text));
     }
     
-    /* Copy to response buffer */
-    const char* text_str = cJSON_GetStringValue(text);
-    size_t len = strlen(text_str);
-    if (len >= buffer_size) {
-        len = buffer_size - 1;
+    /* Extract stop reason */
+    cJSON* stop_reason = cJSON_GetObjectItem(resp_root, "stop_reason");
+    if (stop_reason && cJSON_IsString(stop_reason)) {
+        response->finish_reason = AGENTC_STRDUP(cJSON_GetStringValue(stop_reason));
     }
-    memcpy(response_buffer, text_str, len);
-    response_buffer[len] = '\0';
+    
+    /* Extract usage */
+    cJSON* usage = cJSON_GetObjectItem(resp_root, "usage");
+    if (usage) {
+        cJSON* input_tokens = cJSON_GetObjectItem(usage, "input_tokens");
+        cJSON* output_tokens = cJSON_GetObjectItem(usage, "output_tokens");
+        
+        if (input_tokens && cJSON_IsNumber(input_tokens)) {
+            response->prompt_tokens = input_tokens->valueint;
+        }
+        if (output_tokens && cJSON_IsNumber(output_tokens)) {
+            response->completion_tokens = output_tokens->valueint;
+        }
+        response->total_tokens = response->prompt_tokens + response->completion_tokens;
+    }
     
     cJSON_Delete(resp_root);
     agentc_http_response_free(&http_resp);

@@ -1,34 +1,35 @@
 /**
- * @file openai.c
+ * @file openai_api.c
  * @brief OpenAI-compatible API provider
  * 
  * Supports:
  * - OpenAI (api.openai.com)
  * - DeepSeek (api.deepseek.com)
+ * - 通义千问 (dashscope.aliyuncs.com)
+ * - 智谱AI (open.bigmodel.cn)
  * - Any other OpenAI-compatible endpoint
  */
 
-#include "../llm_provider.h"
-#include "agentc/message.h"
-#include "agentc/platform.h"
 #include "agentc/log.h"
+#include "agentc/platform.h"
 #include "http_client.h"
+#include "../llm_provider.h"
+#include "../llm_internal.h"
+#include "../message/message_json.h"
 #include "cJSON.h"
 #include <string.h>
 #include <stdio.h>
 
-/*============================================================================
- * OpenAI Provider Private Data
- *============================================================================*/
-
+/**
+ * @brief OpenAI provider private data
+ */
 typedef struct {
     agentc_http_client_t *http;
 } openai_priv_t;
 
-/*============================================================================
- * Provider Implementation
- *============================================================================*/
-
+/**
+ * @brief Create OpenAI provider private data
+ */
 static void* openai_create(const ac_llm_params_t* params) {
     if (!params) {
         return NULL;
@@ -41,7 +42,7 @@ static void* openai_create(const ac_llm_params_t* params) {
     
     /* Create HTTP client */
     agentc_http_client_config_t config = {
-        .default_timeout_ms = 60000,  // Default 60s timeout
+        .default_timeout_ms = params->timeout_ms,
     };
     
     agentc_err_t err = agentc_http_client_create(&config, &priv->http);
@@ -54,30 +55,36 @@ static void* openai_create(const ac_llm_params_t* params) {
     return priv;
 }
 
+/**
+ * @brief Perform chat completion
+ */
 static agentc_err_t openai_chat(
     void* priv_data,
     const ac_llm_params_t* params,
     const ac_message_t* messages,
-    char* response_buffer,
-    size_t buffer_size
+    const char* tools,
+    ac_chat_response_t* response
 ) {
-    if (!priv_data || !params || !messages || !response_buffer) {
+    if (!priv_data || !params) {
         return AGENTC_ERR_INVALID_ARG;
     }
     
     openai_priv_t* priv = (openai_priv_t*)priv_data;
+    agentc_http_client_t* http = priv->http;
     
     /* Build URL */
     char url[512];
-    const char* api_base = params->api_base ? params->api_base : "https://api.openai.com/v1";
-    snprintf(url, sizeof(url), "%s/chat/completions", api_base);
+    snprintf(url, sizeof(url), "%s/chat/completions", params->api_base);
     
-    /* Build request JSON */
+    /* Build request body (need to pass params for building JSON) */
+    /* Note: build_chat_request_json expects ac_llm_t*, but we only have params */
+    /* We'll need to refactor build_chat_request_json to accept params directly */
     cJSON* root = cJSON_CreateObject();
     if (!root) {
         return AGENTC_ERR_NO_MEMORY;
     }
     
+    /* Model */
     cJSON_AddStringToObject(root, "model", params->model);
     
     /* Messages array */
@@ -91,18 +98,40 @@ static agentc_err_t openai_chat(
         cJSON_AddItemToArray(msgs_arr, sys_msg);
     }
     
-    /* Add message history */
+    /* Add user messages */
     for (const ac_message_t* msg = messages; msg; msg = msg->next) {
-        cJSON* msg_obj = cJSON_CreateObject();
-        cJSON_AddStringToObject(msg_obj, "role", ac_role_to_string(msg->role));
-        if (msg->content) {
-            cJSON_AddStringToObject(msg_obj, "content", msg->content);
+        cJSON* msg_obj = ac_message_to_json(msg);
+        if (msg_obj) {
+            cJSON_AddItemToArray(msgs_arr, msg_obj);
         }
-        cJSON_AddItemToArray(msgs_arr, msg_obj);
     }
     
-    /* Stream = false */
+    /* Temperature */
+    if (params->temperature > 0.0f) {
+        cJSON_AddNumberToObject(root, "temperature", (double)params->temperature);
+    }
+    
+    /* Max tokens */
+    if (params->max_tokens > 0) {
+        cJSON_AddNumberToObject(root, "max_tokens", params->max_tokens);
+    }
+    
+    /* Top-p */
+    if (params->top_p > 0.0f) {
+        cJSON_AddNumberToObject(root, "top_p", (double)params->top_p);
+    }
+    
+    /* Stream */
     cJSON_AddBoolToObject(root, "stream", 0);
+    
+    /* Tools */
+    if (tools && strlen(tools) > 0) {
+        cJSON* tools_arr = cJSON_Parse(tools);
+        if (tools_arr) {
+            cJSON_AddItemToObject(root, "tools", tools_arr);
+            cJSON_AddStringToObject(root, "tool_choice", "auto");
+        }
+    }
     
     char* body = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
@@ -111,7 +140,7 @@ static agentc_err_t openai_chat(
         return AGENTC_ERR_NO_MEMORY;
     }
     
-    AC_LOG_DEBUG("OpenAI request to %s: %s", url, body);
+    AC_LOG_DEBUG("OpenAI request: %s", body);
     
     /* Build headers */
     char auth_header[512];
@@ -123,26 +152,25 @@ static agentc_err_t openai_chat(
     agentc_http_header_append(&headers,
         agentc_http_header_create("Authorization", auth_header));
     
-    /* Make HTTP request */
+    /* Make request */
     agentc_http_request_t req = {
         .url = url,
         .method = AGENTC_HTTP_POST,
         .headers = headers,
         .body = body,
         .body_len = strlen(body),
-        .timeout_ms = 60000,
+        .timeout_ms = params->timeout_ms,
         .verify_ssl = 1,
     };
     
     agentc_http_response_t http_resp = {0};
-    agentc_err_t err = agentc_http_request(priv->http, &req, &http_resp);
+    agentc_err_t err = agentc_http_request(http, &req, &http_resp);
     
     /* Cleanup */
     agentc_http_header_free(headers);
     cJSON_free(body);
     
     if (err != AGENTC_OK) {
-        AC_LOG_ERROR("OpenAI HTTP request failed: %d", err);
         agentc_http_response_free(&http_resp);
         return err;
     }
@@ -154,52 +182,17 @@ static agentc_err_t openai_chat(
         return AGENTC_ERR_HTTP;
     }
     
-    /* Parse response JSON */
+    /* Parse response */
     AC_LOG_DEBUG("OpenAI response: %s", http_resp.body);
+    err = ac_chat_response_parse(http_resp.body, response);
     
-    cJSON* resp_root = cJSON_Parse(http_resp.body);
-    if (!resp_root) {
-        AC_LOG_ERROR("Failed to parse OpenAI response JSON");
-        agentc_http_response_free(&http_resp);
-        return AGENTC_ERR_HTTP;
-    }
-    
-    /* Extract content from choices[0].message.content */
-    cJSON* choices = cJSON_GetObjectItem(resp_root, "choices");
-    if (!choices || !cJSON_IsArray(choices) || cJSON_GetArraySize(choices) == 0) {
-        AC_LOG_ERROR("No choices in OpenAI response");
-        cJSON_Delete(resp_root);
-        agentc_http_response_free(&http_resp);
-        return AGENTC_ERR_HTTP;
-    }
-    
-    cJSON* choice = cJSON_GetArrayItem(choices, 0);
-    cJSON* message = cJSON_GetObjectItem(choice, "message");
-    cJSON* content = cJSON_GetObjectItem(message, "content");
-    
-    if (!content || !cJSON_IsString(content)) {
-        AC_LOG_ERROR("No content in OpenAI response");
-        cJSON_Delete(resp_root);
-        agentc_http_response_free(&http_resp);
-        return AGENTC_ERR_HTTP;
-    }
-    
-    /* Copy to response buffer */
-    const char* content_str = cJSON_GetStringValue(content);
-    size_t len = strlen(content_str);
-    if (len >= buffer_size) {
-        len = buffer_size - 1;
-    }
-    memcpy(response_buffer, content_str, len);
-    response_buffer[len] = '\0';
-    
-    cJSON_Delete(resp_root);
     agentc_http_response_free(&http_resp);
-    
-    AC_LOG_DEBUG("OpenAI chat completed");
-    return AGENTC_OK;
+    return err;
 }
 
+/**
+ * @brief Cleanup OpenAI provider private data
+ */
 static void openai_cleanup(void* priv_data) {
     if (!priv_data) {
         return;
@@ -212,10 +205,13 @@ static void openai_cleanup(void* priv_data) {
     AC_LOG_DEBUG("OpenAI provider cleaned up");
 }
 
-/*============================================================================
- * Provider Registration
- *============================================================================*/
-
+/**
+ * @brief OpenAI provider definition
+ * 
+ * Exported (non-static) so llm.c can register it during lazy initialization.
+ * The AC_PROVIDER_REGISTER macro provides automatic registration for custom
+ * providers loaded dynamically or in shared libraries.
+ */
 const ac_llm_ops_t openai_ops = {
     .name = "openai",
     .create = openai_create,
@@ -223,4 +219,5 @@ const ac_llm_ops_t openai_ops = {
     .cleanup = openai_cleanup,
 };
 
+/* Auto-register provider at program startup (for dynamic/shared library builds) */
 AC_PROVIDER_REGISTER(openai, &openai_ops);
