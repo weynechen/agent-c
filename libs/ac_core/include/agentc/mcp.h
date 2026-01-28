@@ -2,10 +2,12 @@
  * @file mcp.h
  * @brief Model Context Protocol (MCP) Client
  *
- * Client for connecting to MCP servers and discovering tools.
+ * Client for connecting to MCP servers over HTTP/HTTPS and discovering tools.
  * MCP tools can be added to an ac_tool_registry_t.
  *
  * The MCP client lifecycle is managed by the session.
+ *
+ * Protocol Reference: https://modelcontextprotocol.io/
  */
 
 #ifndef AGENTC_MCP_H
@@ -32,13 +34,32 @@ typedef struct ac_session ac_session_t;
 
 /**
  * @brief MCP client configuration
+ *
+ * Configures connection to an MCP server over HTTP/HTTPS.
  */
 typedef struct {
-    const char *server_url;          /* MCP server URL (required) */
-    const char *transport;           /* Transport: "stdio", "http", "sse" (default: "http") */
-    uint32_t timeout_ms;             /* Connection timeout (default: 30000) */
+    const char *server_url;          /* MCP server URL (required, e.g., "http://localhost:3000/mcp") */
+    uint32_t timeout_ms;             /* Request timeout in ms (default: 30000) */
     const char *api_key;             /* Optional API key for authentication */
+    int verify_ssl;                  /* Verify SSL certificate (default: 1) */
+    
+    /* Client identification (sent in initialize) */
+    const char *client_name;         /* Client name (default: "AgentC") */
+    const char *client_version;      /* Client version (default: "1.0.0") */
 } ac_mcp_config_t;
+
+/*============================================================================
+ * MCP Server Info (from initialize response)
+ *============================================================================*/
+
+/**
+ * @brief MCP server information
+ */
+typedef struct {
+    const char *name;                /* Server name */
+    const char *version;             /* Server version */
+    const char *protocol_version;    /* MCP protocol version */
+} ac_mcp_server_info_t;
 
 /*============================================================================
  * MCP Client Creation
@@ -84,7 +105,8 @@ ac_mcp_client_t *ac_mcp_create(
 /**
  * @brief Connect to MCP server
  *
- * Performs handshake and capability negotiation.
+ * Sends initialize request and performs capability negotiation.
+ * The initialized notification is sent automatically.
  *
  * @param client  MCP client
  * @return AGENTC_OK on success
@@ -95,9 +117,17 @@ agentc_err_t ac_mcp_connect(ac_mcp_client_t *client);
  * @brief Check if connected
  *
  * @param client  MCP client
- * @return 1 if connected, 0 otherwise
+ * @return 1 if connected and initialized, 0 otherwise
  */
 int ac_mcp_is_connected(const ac_mcp_client_t *client);
+
+/**
+ * @brief Get server info (after connect)
+ *
+ * @param client  MCP client
+ * @return Server info, NULL if not connected
+ */
+const ac_mcp_server_info_t *ac_mcp_server_info(const ac_mcp_client_t *client);
 
 /**
  * @brief Disconnect from server
@@ -114,6 +144,7 @@ void ac_mcp_disconnect(ac_mcp_client_t *client);
  * @brief Discover available tools from MCP server
  *
  * Must be connected first. Tools are cached internally.
+ * Call ac_tool_registry_add_mcp() to add discovered tools to a registry.
  *
  * @param client  MCP client
  * @return AGENTC_OK on success
@@ -183,6 +214,11 @@ agentc_err_t ac_mcp_get_tool_info(
     const char **description,
     const char **parameters
 );
+
+/**
+ * @brief Cleanup MCP client (called by session)
+ */
+void ac_mcp_cleanup(ac_mcp_client_t *client);
 
 #ifdef __cplusplus
 }

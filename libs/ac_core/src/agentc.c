@@ -33,6 +33,8 @@ const char *ac_strerror(agentc_err_t err) {
         case AGENTC_ERR_NOT_IMPLEMENTED: return "Feature not implemented";
         case AGENTC_ERR_NOT_FOUND:       return "Resource not found";
         case AGENTC_ERR_NOT_CONNECTED:   return "Not connected";
+        case AGENTC_ERR_PROTOCOL:        return "Protocol error";
+        case AGENTC_ERR_PARSE:           return "Parse error";
         default:                         return "Unknown error";
     }
 }
