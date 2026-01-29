@@ -16,6 +16,8 @@ set(AGENTC_CORE_SOURCES
     src/tools/tool.c
     src/tools/tool_mcp.c
     src/mcp/mcp.c
+    src/mcp/mcp_http.c
+    src/mcp/mcp_sse.c
     src/log.c
     port/http_client.c
 )
