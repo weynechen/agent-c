@@ -5,18 +5,25 @@
  * This example demonstrates how to:
  * 1. Create a tool registry
  * 2. Add MOC-generated builtin tools
- * 3. Connect to an MCP server and discover tools
- * 4. Combine builtin and MCP tools in a single agent
+ * 3. Load MCP server configuration from .mcp.json
+ * 4. Connect to multiple MCP servers and discover tools
+ * 5. Combine builtin and MCP tools in a single agent
  *
  * Usage:
- *   ./chat_mcp "List files in the current directory"
  *   ./chat_mcp "What time is it?"
+ *   ./chat_mcp "Query fastapi documentation"
  *
- * Environment:
- *   OPENAI_API_KEY    - OpenAI API key (required)
- *   OPENAI_BASE_URL   - API base URL (optional)
- *   OPENAI_MODEL      - Model name (default: gpt-4o-mini)
- *   MCP_SERVER_URL    - MCP server URL (optional, default: http://localhost:3000/mcp)
+ * Configuration:
+ *   .env         - LLM API keys (OPENAI_API_KEY, etc.)
+ *   .mcp.json    - MCP server configuration
+ *
+ * Example .mcp.json:
+ *   {
+ *     "servers": [
+ *       {"name": "context7", "url": "https://mcp.context7.com/mcp"},
+ *       {"name": "local", "url": "http://localhost:3001/mcp", "enabled": false}
+ *     ]
+ *   }
  */
 
 #include <stdio.h>
@@ -49,12 +56,17 @@ static void print_usage(const char *prog) {
     printf("Examples:\n");
     printf("  %s \"What time is it?\"\n", prog);
     printf("  %s \"Calculate 123 * 456\"\n", prog);
-    printf("  %s \"List files in the current directory\"\n", prog);
-    printf("\nEnvironment:\n");
-    printf("  OPENAI_API_KEY    - OpenAI API key (required)\n");
-    printf("  OPENAI_BASE_URL   - API base URL (optional)\n");
-    printf("  OPENAI_MODEL      - Model name (default: gpt-4o-mini)\n");
-    printf("  MCP_SERVER_URL    - MCP server URL (optional)\n");
+    printf("  %s \"Query fastapi documentation using context7\"\n", prog);
+    printf("\nConfiguration files:\n");
+    printf("  .env        - LLM API keys (OPENAI_API_KEY, OPENAI_MODEL, etc.)\n");
+    printf("  .mcp.json   - MCP server configuration\n");
+    printf("\nExample .mcp.json:\n");
+    printf("  {\n");
+    printf("    \"servers\": [\n");
+    printf("      {\"name\": \"context7\", \"url\": \"https://mcp.context7.com/mcp\"},\n");
+    printf("      {\"name\": \"local\", \"url\": \"http://localhost:3001/mcp\", \"enabled\": false}\n");
+    printf("    ]\n");
+    printf("  }\n");
 }
 
 /*============================================================================
@@ -82,6 +94,7 @@ int main(int argc, char *argv[]) {
     const char *api_key = getenv("OPENAI_API_KEY");
     if (!api_key || strlen(api_key) == 0) {
         AC_LOG_ERROR("OPENAI_API_KEY environment variable is not set");
+        AC_LOG_ERROR("Create a .env file with: OPENAI_API_KEY=your-key");
         platform_free_argv_utf8(utf8_argv, argc);
         platform_cleanup_terminal();
         return 1;
@@ -91,20 +104,13 @@ int main(int argc, char *argv[]) {
     const char *model = getenv("OPENAI_MODEL");
     if (!model) model = "gpt-4o-mini";
 
-    // const char *mcp_url = getenv("MCP_SERVER_URL");
-    const char *mcp_url = "https://mcp.context7.com/mcp";
-
     printf("=== AgentC MCP Integration Demo ===\n");
     printf("Model: %s\n", model);
     if (base_url) printf("API URL: %s\n", base_url);
-    if (mcp_url) printf("MCP Server: %s\n", mcp_url);
     printf("\n");
 
     /*========================================================================
      * Step 1: Open session
-     * 
-     * The session manages lifecycle of all resources: agents, registries,
-     * and MCP clients. When session closes, everything is cleaned up.
      *========================================================================*/
     
     ac_session_t *session = ac_session_open();
@@ -117,9 +123,6 @@ int main(int argc, char *argv[]) {
 
     /*========================================================================
      * Step 2: Create tool registry
-     * 
-     * The registry holds all tools that will be available to the agent.
-     * It's created within the session, so it's automatically cleaned up.
      *========================================================================*/
     
     ac_tool_registry_t *tools = ac_tool_registry_create(session);
@@ -133,9 +136,6 @@ int main(int argc, char *argv[]) {
 
     /*========================================================================
      * Step 3: Add builtin tools (from MOC)
-     * 
-     * Use AC_TOOLS() macro to select which MOC-generated tools to add.
-     * The macro expands to: &TOOL_xxx, &TOOL_yyy, NULL
      *========================================================================*/
     
     printf("Adding builtin tools...\n");
@@ -148,54 +148,34 @@ int main(int argc, char *argv[]) {
         AC_LOG_WARN("Failed to add some builtin tools: %s", ac_strerror(err));
     }
     
-    printf("  Builtin tools added: %zu\n", ac_tool_registry_count(tools));
+    printf("  Builtin tools: %zu\n", ac_tool_registry_count(tools));
 
     /*========================================================================
-     * Step 4: Connect to MCP server and discover tools (optional)
+     * Step 4: Load MCP configuration and connect to servers
      * 
-     * If MCP_SERVER_URL is set, connect to the MCP server and discover
-     * additional tools. These are added to the same registry.
+     * Configuration is loaded from .mcp.json file.
+     * This is a dotfile to protect API keys.
      *========================================================================*/
     
-    ac_mcp_client_t *mcp = NULL;
+    printf("\nLoading MCP configuration from .mcp.json...\n");
     
-    if (mcp_url && strlen(mcp_url) > 0) {
-        printf("\nConnecting to MCP server: %s\n", mcp_url);
+    ac_mcp_servers_config_t *mcp_config = ac_mcp_load_config(NULL);
+    
+    if (mcp_config) {
+        size_t total = ac_mcp_config_server_count(mcp_config);
+        size_t enabled = ac_mcp_config_enabled_count(mcp_config);
+        printf("  Found %zu servers (%zu enabled)\n", total, enabled);
         
-        mcp = ac_mcp_create(session, &(ac_mcp_config_t){
-            .server_url = mcp_url,
-            .timeout_ms = 30000,
-            .verify_ssl = 1
-        });
-        
-        if (mcp) {
-            err = ac_mcp_connect(mcp);
-            if (err == AGENTC_OK) {
-                printf("  Connected to MCP server\n");
-                
-                err = ac_mcp_discover_tools(mcp);
-                if (err == AGENTC_OK) {
-                    size_t mcp_count = ac_mcp_tool_count(mcp);
-                    printf("  Discovered %zu MCP tools\n", mcp_count);
-                    
-                    /* Add MCP tools to registry */
-                    err = ac_tool_registry_add_mcp(tools, mcp);
-                    if (err == AGENTC_OK) {
-                        printf("  MCP tools added to registry\n");
-                    } else {
-                        AC_LOG_WARN("Failed to add MCP tools: %s", ac_strerror(err));
-                    }
-                } else {
-                    AC_LOG_WARN("Failed to discover MCP tools: %s", ac_strerror(err));
-                }
-            } else {
-                AC_LOG_WARN("Failed to connect to MCP server: %s", ac_strerror(err));
-            }
-        } else {
-            AC_LOG_WARN("Failed to create MCP client");
+        if (enabled > 0) {
+            printf("\nConnecting to MCP servers...\n");
+            size_t connected = ac_mcp_connect_all(session, mcp_config, tools);
+            printf("  Connected: %zu/%zu\n", connected, enabled);
         }
+        
+        ac_mcp_config_free(mcp_config);
     } else {
-        printf("\nNo MCP server configured (set MCP_SERVER_URL to enable)\n");
+        printf("  No .mcp.json found (MCP disabled)\n");
+        printf("  Create .mcp.json to enable MCP servers\n");
     }
 
     /*========================================================================
@@ -211,16 +191,12 @@ int main(int argc, char *argv[]) {
         printf("Tools schema size: %zu bytes\n", strlen(schema));
         free(schema);
     }
-    printf("\n");
 
     /*========================================================================
      * Step 6: Create agent with the tool registry
-     * 
-     * The agent uses the registry for tool calling. All tools (builtin + MCP)
-     * are available through the same interface.
      *========================================================================*/
     
-    printf("Creating agent...\n\n");
+    printf("\nCreating agent...\n");
     
     ac_agent_t *agent = ac_agent_create(session, &(ac_agent_params_t){
         .name = "MCPAgent",
@@ -251,7 +227,7 @@ int main(int argc, char *argv[]) {
      * Step 7: Run the agent
      *========================================================================*/
     
-    printf("[User] %s\n\n", user_prompt);
+    printf("\n[User] %s\n\n", user_prompt);
     
     ac_agent_result_t *result = ac_agent_run(agent, user_prompt);
     
@@ -263,11 +239,6 @@ int main(int argc, char *argv[]) {
 
     /*========================================================================
      * Step 8: Cleanup
-     * 
-     * Just close the session - it automatically destroys:
-     * - All agents
-     * - All tool registries
-     * - All MCP clients
      *========================================================================*/
     
     printf("Closing session...\n");

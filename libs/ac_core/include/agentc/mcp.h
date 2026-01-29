@@ -27,6 +27,7 @@ extern "C" {
 
 typedef struct ac_mcp_client ac_mcp_client_t;
 typedef struct ac_session ac_session_t;
+typedef struct ac_tool_registry ac_tool_registry_t;
 
 /*============================================================================
  * MCP Configuration
@@ -219,6 +220,102 @@ agentc_err_t ac_mcp_get_tool_info(
  * @brief Cleanup MCP client (called by session)
  */
 void ac_mcp_cleanup(ac_mcp_client_t *client);
+
+/*============================================================================
+ * Multi-Server Configuration (.mcp.json)
+ *============================================================================*/
+
+/**
+ * @brief MCP servers configuration (loaded from .mcp.json)
+ *
+ * File format:
+ * @code{.json}
+ * {
+ *   "servers": [
+ *     {
+ *       "name": "context7",
+ *       "url": "https://mcp.context7.com/mcp",
+ *       "enabled": true
+ *     },
+ *     {
+ *       "name": "local-fs",
+ *       "url": "http://localhost:3001/mcp",
+ *       "api_key": "secret-key",
+ *       "timeout_ms": 60000,
+ *       "enabled": true
+ *     }
+ *   ]
+ * }
+ * @endcode
+ */
+typedef struct ac_mcp_servers_config ac_mcp_servers_config_t;
+
+/**
+ * @brief Load MCP configuration from .mcp.json file
+ *
+ * Searches for .mcp.json in current directory.
+ * The file should be a dotfile to protect API keys.
+ *
+ * @param path  Path to .mcp.json file (NULL = ".mcp.json" in current dir)
+ * @return Configuration handle, NULL if file not found or parse error
+ *
+ * Example:
+ * @code
+ * ac_mcp_servers_config_t *config = ac_mcp_load_config(NULL);
+ * if (config) {
+ *     size_t connected = ac_mcp_connect_all(session, config, tools);
+ *     printf("Connected to %zu MCP servers\n", connected);
+ *     ac_mcp_config_free(config);
+ * }
+ * @endcode
+ */
+ac_mcp_servers_config_t *ac_mcp_load_config(const char *path);
+
+/**
+ * @brief Get number of servers in configuration
+ *
+ * @param config  Configuration handle
+ * @return Number of servers (including disabled)
+ */
+size_t ac_mcp_config_server_count(const ac_mcp_servers_config_t *config);
+
+/**
+ * @brief Get number of enabled servers
+ *
+ * @param config  Configuration handle
+ * @return Number of enabled servers
+ */
+size_t ac_mcp_config_enabled_count(const ac_mcp_servers_config_t *config);
+
+/**
+ * @brief Free configuration
+ *
+ * @param config  Configuration to free
+ */
+void ac_mcp_config_free(ac_mcp_servers_config_t *config);
+
+/**
+ * @brief Connect to all enabled MCP servers and add tools to registry
+ *
+ * Convenience function that:
+ * 1. Creates MCP clients for all enabled servers
+ * 2. Connects to each server
+ * 3. Discovers tools from each server
+ * 4. Adds all tools to the registry
+ *
+ * Failed connections are logged but don't stop other servers.
+ * All clients are managed by the session (auto-cleanup).
+ *
+ * @param session   Session handle
+ * @param config    Configuration from ac_mcp_load_config
+ * @param registry  Tool registry to add discovered tools
+ * @return Number of successfully connected servers
+ */
+size_t ac_mcp_connect_all(
+    ac_session_t *session,
+    const ac_mcp_servers_config_t *config,
+    ac_tool_registry_t *registry
+);
 
 #ifdef __cplusplus
 }

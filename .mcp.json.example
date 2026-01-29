@@ -1,0 +1,21 @@
+{
+  "servers": [
+    {
+      "name": "context7",
+      "url": "https://mcp.context7.com/mcp",
+      "enabled": true
+    },
+    {
+      "name": "local-filesystem",
+      "url": "http://localhost:3001/mcp",
+      "api_key": "secret-key",
+      "timeout_ms": 60000,
+      "enabled": true
+    },
+    {
+      "name": "disabled-server",
+      "url": "http://example.com/mcp",
+      "enabled": false
+    }
+  ]
+}
