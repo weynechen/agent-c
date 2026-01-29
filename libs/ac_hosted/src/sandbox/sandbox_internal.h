@@ -35,6 +35,15 @@ struct ac_sandbox {
     ac_sandbox_backend_t backend;
     ac_sandbox_level_t level;
     
+    /* Human-in-the-loop callback */
+    ac_sandbox_confirm_fn confirm_callback;
+    void *confirm_user_data;
+    
+    /* Session-level permissions (from ALLOW_SESSION responses) */
+    int session_allow_dangerous_commands;
+    int session_allow_external_paths;
+    int session_allow_network;
+    
     /* Platform-specific data */
     void *platform_data;
 };

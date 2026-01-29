@@ -16,6 +16,121 @@
 #include "dotenv.h"
 
 /*============================================================================
+ * Sandbox Confirmation Callback
+ *============================================================================*/
+
+static ac_sandbox_confirm_result_t sandbox_confirm_callback(
+    const ac_sandbox_confirm_request_t *request,
+    void *user_data
+) {
+    (void)user_data;
+    
+    if (!request) {
+        return AC_SANDBOX_DENY;
+    }
+    
+    /* Display confirmation prompt */
+    printf("\n");
+    printf("┌─────────────────────────────────────────────────────────────────┐\n");
+    printf("│ SANDBOX CONFIRMATION REQUIRED                                   │\n");
+    printf("├─────────────────────────────────────────────────────────────────┤\n");
+    
+    /* Show type */
+    const char *type_str;
+    switch (request->type) {
+        case AC_SANDBOX_CONFIRM_COMMAND:
+            type_str = "Command Execution";
+            break;
+        case AC_SANDBOX_CONFIRM_PATH_READ:
+            type_str = "File Read (outside workspace)";
+            break;
+        case AC_SANDBOX_CONFIRM_PATH_WRITE:
+            type_str = "File Write (outside workspace)";
+            break;
+        case AC_SANDBOX_CONFIRM_NETWORK:
+            type_str = "Network Access";
+            break;
+        case AC_SANDBOX_CONFIRM_DANGEROUS:
+            type_str = "Potentially Dangerous Operation";
+            break;
+        default:
+            type_str = "Unknown Operation";
+    }
+    printf("│ Type: %-57s │\n", type_str);
+    
+    /* Show resource (truncate if too long) */
+    if (request->resource) {
+        char resource_display[56];
+        size_t len = strlen(request->resource);
+        if (len > 55) {
+            strncpy(resource_display, request->resource, 52);
+            strcpy(resource_display + 52, "...");
+        } else {
+            strncpy(resource_display, request->resource, sizeof(resource_display) - 1);
+            resource_display[sizeof(resource_display) - 1] = '\0';
+        }
+        printf("│ Resource: %-53s │\n", resource_display);
+    }
+    
+    /* Show reason */
+    if (request->reason) {
+        printf("│ Reason: %-55s │\n", request->reason);
+    }
+    
+    printf("├─────────────────────────────────────────────────────────────────┤\n");
+    
+    /* Show AI suggestion */
+    if (request->ai_suggestion) {
+        printf("│ AI Note: %-54s │\n", "");
+        /* Word wrap the suggestion */
+        const char *p = request->ai_suggestion;
+        while (*p) {
+            char line[56];
+            int i = 0;
+            while (*p && i < 55) {
+                if (*p == '\n') {
+                    p++;
+                    break;
+                }
+                line[i++] = *p++;
+            }
+            line[i] = '\0';
+            printf("│   %-61s │\n", line);
+        }
+    }
+    
+    printf("├─────────────────────────────────────────────────────────────────┤\n");
+    printf("│ Options:                                                        │\n");
+    printf("│   [y] Yes, allow this operation                                 │\n");
+    printf("│   [n] No, deny this operation                                   │\n");
+    printf("│   [a] Allow all similar operations this session                 │\n");
+    printf("└─────────────────────────────────────────────────────────────────┘\n");
+    
+    printf("\nYour choice [y/n/a]: ");
+    fflush(stdout);
+    
+    /* Read user input */
+    char input[16];
+    if (!fgets(input, sizeof(input), stdin)) {
+        printf("No input received, denying.\n");
+        return AC_SANDBOX_DENY;
+    }
+    
+    /* Parse response */
+    char choice = input[0];
+    if (choice == 'y' || choice == 'Y') {
+        printf("Allowed.\n\n");
+        return AC_SANDBOX_ALLOW;
+    } else if (choice == 'a' || choice == 'A') {
+        printf("Allowed for this session.\n\n");
+        return AC_SANDBOX_ALLOW_SESSION;
+    } else {
+        printf("Denied.\n\n");
+        return AC_SANDBOX_DENY;
+    }
+}
+
+/*============================================================================
  * Help & Version
  *============================================================================*/
 
@@ -131,8 +246,10 @@ static int parse_args(int argc, char **argv,
     const char *max_iter_str = getenv("MAX_ITERATIONS");
     if (max_iter_str) {
         config->max_iterations = atoi(max_iter_str);
+        AC_LOG_INFO("max iterations:%d",config->max_iterations);
     } else {
         config->max_iterations = 5;
+        AC_LOG_INFO("max iterations default:%d",config->max_iterations);
     }
     
     config->timeout_ms = 60000;
@@ -328,10 +445,14 @@ int main(int argc, char **argv) {
             fprintf(stderr, "\n");
             fprintf(stderr, "Continuing without sandbox protection.\n");
         } else {
+            /* Set up human-in-the-loop confirmation callback */
+            ac_sandbox_set_confirm_callback(sandbox, sandbox_confirm_callback, NULL);
+            
             if (!config.quiet) {
                 printf("Sandbox configured: %s (workspace: %s)\n", 
                        ac_sandbox_backend_name(), workspace);
                 printf("Commands will be executed in sandboxed subprocesses.\n");
+                printf("You will be prompted to confirm operations outside the workspace.\n");
             }
             
             /* Set sandbox for tools - tools will use ac_sandbox_exec() */

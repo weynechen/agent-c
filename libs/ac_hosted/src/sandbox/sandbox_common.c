@@ -7,6 +7,7 @@
 
 #include <agentc/sandbox.h>
 #include <agentc/log.h>
+#include "sandbox_internal.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -133,7 +134,7 @@ void ac_sandbox_set_denial_reason(const char *reason) {
 }
 
 const char *ac_sandbox_denial_reason(void) {
-    return g_denial_reason[0] ? g_denial_reason : "Access denied by sandbox policy";
+    return g_denial_reason[0] ? g_denial_reason : "Access denied by sandbox policy , tell user how to excute manual";
 }
 
 /*============================================================================
@@ -374,6 +375,74 @@ const char **ac_sandbox_get_default_readonly_paths(void) {
 }
 
 /*============================================================================
+ * Human-in-the-Loop Confirmation
+ *============================================================================*/
+
+void ac_sandbox_set_confirm_callback(
+    ac_sandbox_t *sandbox,
+    ac_sandbox_confirm_fn callback,
+    void *user_data
+) {
+    if (!sandbox) return;
+    sandbox->confirm_callback = callback;
+    sandbox->confirm_user_data = user_data;
+}
+
+ac_sandbox_confirm_result_t ac_sandbox_request_confirm(
+    ac_sandbox_t *sandbox,
+    const ac_sandbox_confirm_request_t *request
+) {
+    if (!sandbox || !request) {
+        return AC_SANDBOX_DENY;
+    }
+    
+    /* If no callback is set, deny by default */
+    if (!sandbox->confirm_callback) {
+        AC_LOG_WARN("Sandbox: no confirm callback, auto-deny: %s", 
+                    request->resource ? request->resource : "(null)");
+        return AC_SANDBOX_DENY;
+    }
+    
+    /* Call the user-provided callback */
+    ac_sandbox_confirm_result_t result = sandbox->confirm_callback(
+        request, sandbox->confirm_user_data);
+    
+    /* Handle session-level permissions */
+    if (result == AC_SANDBOX_ALLOW_SESSION) {
+        switch (request->type) {
+            case AC_SANDBOX_CONFIRM_DANGEROUS:
+                sandbox->session_allow_dangerous_commands = 1;
+                break;
+            case AC_SANDBOX_CONFIRM_PATH_READ:
+            case AC_SANDBOX_CONFIRM_PATH_WRITE:
+                sandbox->session_allow_external_paths = 1;
+                break;
+            case AC_SANDBOX_CONFIRM_NETWORK:
+                sandbox->session_allow_network = 1;
+                break;
+            default:
+                break;
+        }
+    }
+    
+    return result;
+}
+
+/**
+ * @brief Get confirmation type as string
+ */
+const char *ac_sandbox_confirm_type_str(ac_sandbox_confirm_type_t type) {
+    switch (type) {
+        case AC_SANDBOX_CONFIRM_COMMAND: return "command";
+        case AC_SANDBOX_CONFIRM_PATH_READ: return "path_read";
+        case AC_SANDBOX_CONFIRM_PATH_WRITE: return "path_write";
+        case AC_SANDBOX_CONFIRM_NETWORK: return "network";
+        case AC_SANDBOX_CONFIRM_DANGEROUS: return "dangerous";
+        default: return "unknown";
+    }
+}
+
+/*============================================================================
  * Internal API Declaration (for platform implementations)
  *============================================================================*/
 
@@ -393,3 +462,4 @@ int ac_sandbox_normalize_path(const char *path, char *buffer, size_t size);
 int ac_sandbox_path_is_under(const char *parent, const char *child);
 int ac_sandbox_is_command_dangerous(const char *command);
 const char **ac_sandbox_get_default_readonly_paths(void);
+const char *ac_sandbox_confirm_type_str(ac_sandbox_confirm_type_t type);

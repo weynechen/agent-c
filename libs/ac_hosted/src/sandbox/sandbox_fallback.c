@@ -352,12 +352,36 @@ int ac_sandbox_check_path(
         return 1;
     }
     
-    /* Denied */
-    char reason[256];
-    snprintf(reason, sizeof(reason), 
-             "Path '%s' is not in allowed paths", path);
-    ac_sandbox_set_denial_reason(reason);
+    /* Path not in allowed list - request human confirmation */
+    if (sandbox->session_allow_external_paths) {
+        return 1;
+    }
     
+    ac_sandbox_confirm_type_t type = 
+        (permissions & (AC_SANDBOX_PERM_FS_WRITE | AC_SANDBOX_PERM_FS_CREATE | AC_SANDBOX_PERM_FS_DELETE))
+        ? AC_SANDBOX_CONFIRM_PATH_WRITE 
+        : AC_SANDBOX_CONFIRM_PATH_READ;
+    
+    char reason[256];
+    snprintf(reason, sizeof(reason), "Path '%s' is outside the workspace", path);
+    
+    ac_sandbox_confirm_request_t request = {
+        .type = type,
+        .resource = path,
+        .reason = reason,
+        .ai_suggestion = type == AC_SANDBOX_CONFIRM_PATH_WRITE 
+            ? "This file is outside the workspace."
+            : "This file is outside the workspace."
+    };
+    
+    ac_sandbox_confirm_result_t result = ac_sandbox_request_confirm(
+        (ac_sandbox_t *)sandbox, &request);
+    
+    if (result == AC_SANDBOX_ALLOW || result == AC_SANDBOX_ALLOW_SESSION) {
+        return 1;
+    }
+    
+    ac_sandbox_set_denial_reason(reason);
     if (sandbox->log_violations) {
         AC_LOG_WARN("Sandbox: access denied - %s", reason);
     }
@@ -375,39 +399,51 @@ int ac_sandbox_check_command(
     
     /* Check for dangerous command patterns */
     if (ac_sandbox_is_command_dangerous(command)) {
-        ac_sandbox_set_denial_reason("Command contains dangerous patterns");
-        if (sandbox->log_violations) {
-            AC_LOG_WARN("Sandbox: blocked dangerous command: %s", command);
+        if (!sandbox->session_allow_dangerous_commands) {
+            ac_sandbox_confirm_request_t request = {
+                .type = AC_SANDBOX_CONFIRM_DANGEROUS,
+                .resource = command,
+                .reason = "Command contains potentially dangerous patterns",
+                .ai_suggestion = "This command may be destructive."
+            };
+            
+            ac_sandbox_confirm_result_t result = ac_sandbox_request_confirm(
+                (ac_sandbox_t *)sandbox, &request);
+            
+            if (result != AC_SANDBOX_ALLOW && result != AC_SANDBOX_ALLOW_SESSION) {
+                ac_sandbox_set_denial_reason("Dangerous command denied by user");
+                return 0;
+            }
         }
-        return 0;
     }
     
 #if defined(_WIN32)
     /* Windows-specific dangerous patterns */
     const char *win_dangerous[] = {
-        "format ",
-        "del /s",
-        "rd /s",
-        "rmdir /s",
-        "net user",
-        "net localgroup",
-        "reg delete",
-        "reg add",
-        "bcdedit",
-        "diskpart",
-        "takeown",
-        "icacls",
-        NULL
+        "format ", "del /s", "rd /s", "rmdir /s",
+        "net user", "net localgroup", "reg delete", "reg add",
+        "bcdedit", "diskpart", "takeown", "icacls", NULL
     };
     
     for (int i = 0; win_dangerous[i]; i++) {
         if (strstr(command, win_dangerous[i])) {
-            ac_sandbox_set_denial_reason("Windows dangerous command blocked");
-            if (sandbox->log_violations) {
-                AC_LOG_WARN("Sandbox: blocked Windows dangerous pattern: %s", 
-                           win_dangerous[i]);
+            if (!sandbox->session_allow_dangerous_commands) {
+                ac_sandbox_confirm_request_t request = {
+                    .type = AC_SANDBOX_CONFIRM_DANGEROUS,
+                    .resource = command,
+                    .reason = "Windows dangerous command detected",
+                    .ai_suggestion = "This Windows command may be destructive."
+                };
+                
+                ac_sandbox_confirm_result_t result = ac_sandbox_request_confirm(
+                    (ac_sandbox_t *)sandbox, &request);
+                
+                if (result != AC_SANDBOX_ALLOW && result != AC_SANDBOX_ALLOW_SESSION) {
+                    ac_sandbox_set_denial_reason("Windows dangerous command denied");
+                    return 0;
+                }
             }
-            return 0;
+            break;
         }
     }
 #endif
@@ -419,7 +455,7 @@ int ac_sandbox_check_command(
     }
     
     /* Check for network commands if network is disabled */
-    if (!sandbox->allow_network) {
+    if (!sandbox->allow_network && !sandbox->session_allow_network) {
 #if defined(_WIN32)
         const char *net_commands[] = {
             "curl", "wget", "Invoke-WebRequest", "Invoke-RestMethod",
@@ -432,17 +468,26 @@ int ac_sandbox_check_command(
 #endif
         for (int i = 0; net_commands[i]; i++) {
             if (strstr(command, net_commands[i])) {
-                /* Allow version checks */
                 if (strstr(command, "--version") || strstr(command, "-V") ||
                     strstr(command, "/version") || strstr(command, "/?")) {
                     continue;
                 }
-                ac_sandbox_set_denial_reason("Network commands are disabled");
-                if (sandbox->log_violations) {
-                    AC_LOG_WARN("Sandbox: blocked network command: %s", 
-                               net_commands[i]);
+                
+                ac_sandbox_confirm_request_t request = {
+                    .type = AC_SANDBOX_CONFIRM_NETWORK,
+                    .resource = command,
+                    .reason = "Command requires network access",
+                    .ai_suggestion = "This command will access the network."
+                };
+                
+                ac_sandbox_confirm_result_t result = ac_sandbox_request_confirm(
+                    (ac_sandbox_t *)sandbox, &request);
+                
+                if (result != AC_SANDBOX_ALLOW && result != AC_SANDBOX_ALLOW_SESSION) {
+                    ac_sandbox_set_denial_reason("Network command denied by user");
+                    return 0;
                 }
-                return 0;
+                break;
             }
         }
     }

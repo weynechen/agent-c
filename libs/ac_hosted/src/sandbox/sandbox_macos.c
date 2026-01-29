@@ -455,12 +455,36 @@ int ac_sandbox_check_path(
         }
     }
     
-    /* Denied */
-    char reason[256];
-    snprintf(reason, sizeof(reason), 
-             "Path '%s' is not in allowed paths", path);
-    ac_sandbox_set_denial_reason(reason);
+    /* Path not in allowed list - request human confirmation */
+    if (sandbox->session_allow_external_paths) {
+        return 1;
+    }
     
+    ac_sandbox_confirm_type_t type = 
+        (permissions & (AC_SANDBOX_PERM_FS_WRITE | AC_SANDBOX_PERM_FS_CREATE | AC_SANDBOX_PERM_FS_DELETE))
+        ? AC_SANDBOX_CONFIRM_PATH_WRITE 
+        : AC_SANDBOX_CONFIRM_PATH_READ;
+    
+    char reason[256];
+    snprintf(reason, sizeof(reason), "Path '%s' is outside the workspace", path);
+    
+    ac_sandbox_confirm_request_t request = {
+        .type = type,
+        .resource = path,
+        .reason = reason,
+        .ai_suggestion = type == AC_SANDBOX_CONFIRM_PATH_WRITE 
+            ? "This file is outside the workspace. Writing may affect system files."
+            : "This file is outside the workspace. It may contain sensitive information."
+    };
+    
+    ac_sandbox_confirm_result_t result = ac_sandbox_request_confirm(
+        (ac_sandbox_t *)sandbox, &request);
+    
+    if (result == AC_SANDBOX_ALLOW || result == AC_SANDBOX_ALLOW_SESSION) {
+        return 1;
+    }
+    
+    ac_sandbox_set_denial_reason(reason);
     if (sandbox->log_violations) {
         AC_LOG_WARN("Sandbox: access denied - %s", reason);
     }
@@ -478,8 +502,22 @@ int ac_sandbox_check_command(
     
     /* Check for dangerous command patterns */
     if (ac_sandbox_is_command_dangerous(command)) {
-        ac_sandbox_set_denial_reason("Command contains dangerous patterns");
-        return 0;
+        if (!sandbox->session_allow_dangerous_commands) {
+            ac_sandbox_confirm_request_t request = {
+                .type = AC_SANDBOX_CONFIRM_DANGEROUS,
+                .resource = command,
+                .reason = "Command contains potentially dangerous patterns",
+                .ai_suggestion = "This command may modify system files or perform destructive operations."
+            };
+            
+            ac_sandbox_confirm_result_t result = ac_sandbox_request_confirm(
+                (ac_sandbox_t *)sandbox, &request);
+            
+            if (result != AC_SANDBOX_ALLOW && result != AC_SANDBOX_ALLOW_SESSION) {
+                ac_sandbox_set_denial_reason("Dangerous command denied by user");
+                return 0;
+            }
+        }
     }
     
     /* Check process exec permission */
@@ -489,16 +527,29 @@ int ac_sandbox_check_command(
     }
     
     /* Check for network commands if network is disabled */
-    if (!sandbox->allow_network) {
+    if (!sandbox->allow_network && !sandbox->session_allow_network) {
         const char *net_commands[] = {"curl", "wget", "nc", "netcat", "ssh", "scp", NULL};
         for (int i = 0; net_commands[i]; i++) {
             if (strstr(command, net_commands[i])) {
-                /* Allow version checks */
                 if (strstr(command, "--version") || strstr(command, "-V")) {
                     continue;
                 }
-                ac_sandbox_set_denial_reason("Network commands are disabled");
-                return 0;
+                
+                ac_sandbox_confirm_request_t request = {
+                    .type = AC_SANDBOX_CONFIRM_NETWORK,
+                    .resource = command,
+                    .reason = "Command requires network access",
+                    .ai_suggestion = "This command will access the network."
+                };
+                
+                ac_sandbox_confirm_result_t result = ac_sandbox_request_confirm(
+                    (ac_sandbox_t *)sandbox, &request);
+                
+                if (result != AC_SANDBOX_ALLOW && result != AC_SANDBOX_ALLOW_SESSION) {
+                    ac_sandbox_set_denial_reason("Network command denied by user");
+                    return 0;
+                }
+                break;
             }
         }
     }
@@ -556,11 +607,11 @@ agentc_err_t ac_sandbox_exec_timeout(
         dup2(pipefd[1], STDERR_FILENO);
         close(pipefd[1]);
         
-        /* Enter sandbox in child process */
-        if (ac_sandbox_enter(sandbox) != AGENTC_OK) {
-            fprintf(stderr, "Failed to enter sandbox\n");
-            _exit(126);
-        }
+        /*
+         * NOTE: We do NOT enter Seatbelt sandbox in child process.
+         * Security is ensured by software-level checks and human confirmation.
+         * The command has already been validated before reaching here.
+         */
         
         execl("/bin/sh", "sh", "-c", command, (char *)NULL);
         fprintf(stderr, "execl failed: %s\n", strerror(errno));

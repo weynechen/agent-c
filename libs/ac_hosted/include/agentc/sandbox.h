@@ -393,6 +393,86 @@ agentc_err_t ac_sandbox_exec_timeout(
 );
 
 /*============================================================================
+ * Human-in-the-Loop Confirmation API
+ *============================================================================*/
+
+/**
+ * @brief Confirmation request type
+ */
+typedef enum {
+    AC_SANDBOX_CONFIRM_COMMAND,         /* Confirm command execution */
+    AC_SANDBOX_CONFIRM_PATH_READ,       /* Confirm path read access */
+    AC_SANDBOX_CONFIRM_PATH_WRITE,      /* Confirm path write access */
+    AC_SANDBOX_CONFIRM_NETWORK,         /* Confirm network access */
+    AC_SANDBOX_CONFIRM_DANGEROUS,       /* Confirm dangerous operation */
+} ac_sandbox_confirm_type_t;
+
+/**
+ * @brief Confirmation request details
+ */
+typedef struct {
+    ac_sandbox_confirm_type_t type;     /* Type of confirmation needed */
+    const char *resource;               /* Resource (command, path, etc.) */
+    const char *reason;                 /* Why confirmation is needed */
+    const char *ai_suggestion;          /* AI's suggestion for the user */
+} ac_sandbox_confirm_request_t;
+
+/**
+ * @brief Confirmation result
+ */
+typedef enum {
+    AC_SANDBOX_DENY = 0,                /* Deny this request */
+    AC_SANDBOX_ALLOW = 1,               /* Allow this request */
+    AC_SANDBOX_ALLOW_SESSION = 2,       /* Allow all similar requests this session */
+} ac_sandbox_confirm_result_t;
+
+/**
+ * @brief Confirmation callback function type
+ *
+ * This callback is invoked when sandbox needs user confirmation.
+ * The implementation should prompt the user and return their decision.
+ *
+ * @param request   Details about what needs confirmation
+ * @param user_data User-provided context
+ * @return User's decision
+ */
+typedef ac_sandbox_confirm_result_t (*ac_sandbox_confirm_fn)(
+    const ac_sandbox_confirm_request_t *request,
+    void *user_data
+);
+
+/**
+ * @brief Set confirmation callback for human-in-the-loop
+ *
+ * When set, the sandbox will call this function instead of automatically
+ * denying operations that need review.
+ *
+ * @param sandbox    Sandbox handle
+ * @param callback   Callback function (NULL to disable)
+ * @param user_data  User context passed to callback
+ */
+void ac_sandbox_set_confirm_callback(
+    ac_sandbox_t *sandbox,
+    ac_sandbox_confirm_fn callback,
+    void *user_data
+);
+
+/**
+ * @brief Request confirmation from user
+ *
+ * This is called internally by sandbox check functions.
+ * Can also be called directly by applications.
+ *
+ * @param sandbox  Sandbox handle
+ * @param request  Confirmation request details
+ * @return User's decision (DENY if no callback set)
+ */
+ac_sandbox_confirm_result_t ac_sandbox_request_confirm(
+    ac_sandbox_t *sandbox,
+    const ac_sandbox_confirm_request_t *request
+);
+
+/*============================================================================
  * Convenience Macros
  *============================================================================*/
 
