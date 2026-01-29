@@ -3,11 +3,35 @@
 
 cmake_minimum_required(VERSION 3.14)
 
+#============================================================================
+# Platform Detection for Sandbox
+#============================================================================
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(AGENTC_SANDBOX_PLATFORM "linux")
+    set(AGENTC_SANDBOX_SOURCE src/sandbox/sandbox_linux.c)
+    message(STATUS "Sandbox: Linux platform detected (Landlock+Seccomp)")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(AGENTC_SANDBOX_PLATFORM "macos")
+    set(AGENTC_SANDBOX_SOURCE src/sandbox/sandbox_macos.c)
+    message(STATUS "Sandbox: macOS platform detected (Seatbelt)")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    set(AGENTC_SANDBOX_PLATFORM "windows")
+    set(AGENTC_SANDBOX_SOURCE src/sandbox/sandbox_fallback.c)
+    message(STATUS "Sandbox: Windows platform detected (Software filtering)")
+else()
+    set(AGENTC_SANDBOX_PLATFORM "fallback")
+    set(AGENTC_SANDBOX_SOURCE src/sandbox/sandbox_fallback.c)
+    message(STATUS "Sandbox: Unknown platform (Software filtering)")
+endif()
+
 # Hosted sources
 # Note: mcp and tools have been moved to ac_core
 # skills will be redesigned separately
 set(AGENTC_HOSTED_SOURCES
     src/rules/rules.c
+    src/sandbox/sandbox_common.c
+    ${AGENTC_SANDBOX_SOURCE}
 )
 
 # Component: dotenv
@@ -93,9 +117,10 @@ target_include_directories(ac_hosted PUBLIC
     $<INSTALL_INTERFACE:include>
 )
 
-# Private includes for accessing ac_core port layer
+# Private includes for accessing ac_core port layer and sandbox internals
 target_include_directories(ac_hosted PRIVATE
     ${CMAKE_SOURCE_DIR}/libs/ac_core/port    # HTTP client and other port abstractions
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/sandbox  # Sandbox internal headers
 )
 
 # Windows: Add dirent compatibility layer
@@ -128,4 +153,4 @@ install(DIRECTORY include/agentc
     FILES_MATCHING PATTERN "*.h"
 )
 
-message(STATUS "AgentC Hosted: rules, markdown, dotenv built")
+message(STATUS "AgentC Hosted: rules, sandbox (${AGENTC_SANDBOX_PLATFORM}), markdown, dotenv built")

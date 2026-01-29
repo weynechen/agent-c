@@ -12,6 +12,7 @@ set(AGENTC_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
 include_directories(
     ${AGENTC_ROOT}/libs/ac_core/include
     ${AGENTC_ROOT}/libs/ac_hosted/include
+    ${AGENTC_ROOT}/libs/ac_hosted/src/sandbox  # Sandbox internal headers
     ${AGENTC_ROOT}/external/cjson
     ${AGENTC_ROOT}/external/dotenv
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -120,32 +121,39 @@ add_dependencies(minimal_cli minimal_cli_moc)
 #============================================================================
 
 if(MINIMAL_CLI_STANDALONE)
-    # Standalone build: need to find/build ac_core
-    # First try to find pre-built library
+    # Standalone build: need to find/build ac_core and ac_hosted
+    # First try to find pre-built libraries
     find_library(AC_CORE_LIB ac_core
         PATHS
             "${AGENTC_ROOT}/build/libs/ac_core"
             "${CMAKE_CURRENT_SOURCE_DIR}/../../build/libs/ac_core"
         NO_DEFAULT_PATH
     )
+    find_library(AC_HOSTED_LIB ac_hosted
+        PATHS
+            "${AGENTC_ROOT}/build/libs/ac_hosted"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../../build/libs/ac_hosted"
+        NO_DEFAULT_PATH
+    )
     
-    if(AC_CORE_LIB)
+    if(AC_CORE_LIB AND AC_HOSTED_LIB)
         message(STATUS "Found ac_core library: ${AC_CORE_LIB}")
-        target_link_libraries(minimal_cli ${AC_CORE_LIB})
+        message(STATUS "Found ac_hosted library: ${AC_HOSTED_LIB}")
+        target_link_libraries(minimal_cli ${AC_CORE_LIB} ${AC_HOSTED_LIB})
     else()
         message(FATAL_ERROR 
-            "ac_core library not found!\n"
+            "ac_core or ac_hosted library not found!\n"
             "Please build the main project first:\n"
             "  cd ${AGENTC_ROOT}\n"
             "  mkdir -p build && cd build\n"
             "  cmake ..\n"
-            "  make ac_core\n"
+            "  make ac_core ac_hosted\n"
             "Then return to build minimal_cli."
         )
     endif()
 else()
     # Building with parent project
-    target_link_libraries(minimal_cli ac_core)
+    target_link_libraries(minimal_cli ac_core ac_hosted)
 endif()
 
 # Common libraries

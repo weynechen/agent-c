@@ -6,4 +6,11 @@ arena在框架中的使用，实际有两个作用域
 
 
 # code excute sandbox
-为了丰富agent的工具能力，可能会引入动态语言，比如quickjs支持的ECAM2023。
+- 为了丰富agent的工具能力，可能会引入动态语言，比如quickjs支持的ECAM2023。
+- 引入沙盒层，在linux/macos上支持沙盒特性
+
+# add more examples
+增加更多的使用场景
+
+# 可观测性
+需要在llm的交互路径上面引入log文本记录（类似litellm的dump功能)

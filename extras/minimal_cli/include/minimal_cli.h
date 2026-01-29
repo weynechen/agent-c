@@ -43,6 +43,12 @@ typedef struct {
     /* Safety Configuration */
     int safe_mode;             /* Require confirmation for dangerous commands */
     
+    /* Sandbox Configuration */
+    int enable_sandbox;        /* Enable sandbox for command execution */
+    const char *workspace_path; /* Workspace path for sandbox (defaults to cwd) */
+    int sandbox_allow_network; /* Allow network access in sandbox */
+    int sandbox_strict_mode;   /* Strict sandbox mode */
+    
     /* Output Configuration */
     int verbose;
     int quiet;

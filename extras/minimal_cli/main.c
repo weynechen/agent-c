@@ -4,10 +4,13 @@
  */
 
 #include "minimal_cli.h"
+#include "builtin_tools.h"
 #include <agentc/log.h>
+#include <agentc/sandbox.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 /* dotenv for loading .env file */
 #include "dotenv.h"
@@ -35,6 +38,12 @@ static void print_usage(const char *prog) {
     printf("  --no-tools              Disable all tools\n");
     printf("  --no-stream             Disable streaming output\n");
     printf("  --safe-mode             Enable safe mode (confirm dangerous commands)\n");
+    printf("\n");
+    printf("Sandbox Options (sandbox is enabled by default):\n");
+    printf("  --no-sandbox            Disable sandbox protection\n");
+    printf("  --workspace PATH        Workspace path for sandbox (default: current dir)\n");
+    printf("  --sandbox-network       Allow network access in sandbox\n");
+    printf("  --sandbox-strict        Enable strict sandbox mode\n");
     printf("\n");
     printf("  --verbose               Enable verbose output\n");
     printf("  --quiet                 Quiet mode (minimal output)\n");
@@ -74,6 +83,9 @@ static void print_version(void) {
            MINIMAL_CLI_VERSION_MINOR,
            MINIMAL_CLI_VERSION_PATCH);
     printf("Built on AgentC framework\n");
+    printf("Sandbox: %s (%s)\n", 
+           ac_sandbox_backend_name(),
+           ac_sandbox_is_supported() ? "available" : "not available");
 }
 
 /*============================================================================
@@ -133,7 +145,25 @@ static int parse_args(int argc, char **argv,
         config->safe_mode = 1;
     }
     
-    *interactive = (argc == 1);  /* Default to interactive if no args */
+    /* Parse sandbox settings from env (sandbox enabled by default) */
+    config->enable_sandbox = 1;  /* Default: enabled */
+    const char *sandbox_str = getenv_default("SANDBOX_ENABLED", "true");
+    if (sandbox_str && (strcmp(sandbox_str, "false") == 0 || strcmp(sandbox_str, "0") == 0)) {
+        config->enable_sandbox = 0;
+    }
+    config->workspace_path = getenv("SANDBOX_WORKSPACE");
+    
+    const char *sandbox_net_str = getenv_default("SANDBOX_ALLOW_NETWORK", "false");
+    if (sandbox_net_str && (strcmp(sandbox_net_str, "true") == 0 || strcmp(sandbox_net_str, "1") == 0)) {
+        config->sandbox_allow_network = 1;
+    }
+    
+    const char *sandbox_strict_str = getenv_default("SANDBOX_STRICT", "false");
+    if (sandbox_strict_str && (strcmp(sandbox_strict_str, "true") == 0 || strcmp(sandbox_strict_str, "1") == 0)) {
+        config->sandbox_strict_mode = 1;
+    }
+    
+    *interactive = 1;  /* Default to interactive mode */
     *prompt = NULL;
     
     /* Parse command line arguments */
@@ -194,6 +224,18 @@ static int parse_args(int argc, char **argv,
             config->enable_stream = 0;
         } else if (strcmp(argv[i], "--safe-mode") == 0) {
             config->safe_mode = 1;
+        } else if (strcmp(argv[i], "--no-sandbox") == 0) {
+            config->enable_sandbox = 0;
+        } else if (strcmp(argv[i], "--workspace") == 0) {
+            if (++i >= argc) {
+                fprintf(stderr, "Error: --workspace requires an argument\n");
+                return -1;
+            }
+            config->workspace_path = argv[i];
+        } else if (strcmp(argv[i], "--sandbox-network") == 0) {
+            config->sandbox_allow_network = 1;
+        } else if (strcmp(argv[i], "--sandbox-strict") == 0) {
+            config->sandbox_strict_mode = 1;
         } else if (strcmp(argv[i], "--verbose") == 0) {
             config->verbose = 1;
         } else if (strcmp(argv[i], "--quiet") == 0) {
@@ -242,6 +284,7 @@ int main(int argc, char **argv) {
     int interactive;
     char *prompt;
     int ret;
+    ac_sandbox_t *sandbox = NULL;
     
     /* Parse arguments */
     ret = parse_args(argc, argv, &config, &interactive, &prompt);
@@ -249,10 +292,60 @@ int main(int argc, char **argv) {
         return ret > 0 ? 0 : 1;
     }
     
+    /* Initialize sandbox if enabled */
+    if (config.enable_sandbox) {
+        /* Get workspace path (default to current directory) */
+        char cwd[4096];
+        const char *workspace = config.workspace_path;
+        if (!workspace) {
+            if (getcwd(cwd, sizeof(cwd)) != NULL) {
+                workspace = cwd;
+            } else {
+                workspace = ".";
+            }
+        }
+        
+        /* Create sandbox configuration */
+        ac_sandbox_config_t sb_config = {
+            .workspace_path = workspace,
+            .path_rules = NULL,
+            .path_rules_count = 0,
+            .readonly_paths = NULL,
+            .allow_network = config.sandbox_allow_network,
+            .allow_process_exec = 1,  /* Need to execute commands */
+            .strict_mode = config.sandbox_strict_mode,
+            .log_violations = config.verbose,
+        };
+        
+        /* Create sandbox (but do NOT enter it in main process) */
+        sandbox = ac_sandbox_create(&sb_config);
+        if (!sandbox) {
+            const ac_sandbox_error_t *err = ac_sandbox_last_error();
+            fprintf(stderr, "Warning: Failed to create sandbox");
+            if (err && err->message) {
+                fprintf(stderr, ": %s", err->message);
+            }
+            fprintf(stderr, "\n");
+            fprintf(stderr, "Continuing without sandbox protection.\n");
+        } else {
+            if (!config.quiet) {
+                printf("Sandbox configured: %s (workspace: %s)\n", 
+                       ac_sandbox_backend_name(), workspace);
+                printf("Commands will be executed in sandboxed subprocesses.\n");
+            }
+            
+            /* Set sandbox for tools - tools will use ac_sandbox_exec() */
+            builtin_tools_set_sandbox(sandbox);
+        }
+    }
+    
     /* Create CLI instance */
     minimal_cli_t *cli = minimal_cli_create(&config);
     if (!cli) {
         fprintf(stderr, "Error: Failed to initialize Minimal CLI\n");
+        if (sandbox) {
+            ac_sandbox_destroy(sandbox);
+        }
         return 1;
     }
     
@@ -265,6 +358,12 @@ int main(int argc, char **argv) {
     
     /* Cleanup */
     minimal_cli_destroy(cli);
+    
+    /* Clear sandbox reference before destroying */
+    builtin_tools_set_sandbox(NULL);
+    if (sandbox) {
+        ac_sandbox_destroy(sandbox);
+    }
     
     return ret;
 }

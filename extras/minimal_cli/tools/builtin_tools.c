@@ -7,6 +7,7 @@
  */
 
 #include "builtin_tools.h"
+#include <agentc/sandbox.h>
 #include <cJSON.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,9 +24,18 @@
  *============================================================================*/
 
 static int g_safe_mode = 0;
+static ac_sandbox_t *g_sandbox = NULL;
 
 void builtin_tools_set_safe_mode(int enabled) {
     g_safe_mode = enabled;
+}
+
+void builtin_tools_set_sandbox(struct ac_sandbox *sandbox) {
+    g_sandbox = sandbox;
+}
+
+struct ac_sandbox *builtin_tools_get_sandbox(void) {
+    return g_sandbox;
 }
 
 /*============================================================================
@@ -93,6 +103,58 @@ const char* shell_execute(const char* command) {
         return json_error("command parameter is required");
     }
     
+    char* result = NULL;
+    int exit_code = 0;
+    
+    /* If sandbox is configured, use sandboxed execution */
+    if (g_sandbox) {
+        /* Allocate result buffer */
+        size_t result_cap = 65536;
+        result = malloc(result_cap);
+        if (!result) {
+            return json_error("Memory allocation failed");
+        }
+        result[0] = '\0';
+        
+        /* Execute in sandboxed subprocess */
+        agentc_err_t err = ac_sandbox_exec(g_sandbox, command, result, result_cap, &exit_code);
+        
+        if (err == AGENTC_ERR_INVALID_ARG) {
+            /* Command was blocked by sandbox */
+            cJSON* json = cJSON_CreateObject();
+            cJSON_AddStringToObject(json, "error", "Command blocked by sandbox");
+            cJSON_AddStringToObject(json, "command", command);
+            cJSON_AddStringToObject(json, "reason", ac_sandbox_denial_reason());
+            cJSON_AddStringToObject(json, "ai_hint", 
+                "The sandbox policy prevents executing this command. "
+                "The command may contain dangerous patterns or access restricted resources. "
+                "Consider using a safer alternative or check the workspace configuration.");
+            free(result);
+            return json_result(json);
+        } else if (err == AGENTC_ERR_TIMEOUT) {
+            cJSON* json = cJSON_CreateObject();
+            cJSON_AddStringToObject(json, "error", "Command execution timed out");
+            cJSON_AddStringToObject(json, "command", command);
+            free(result);
+            return json_result(json);
+        } else if (err != AGENTC_OK) {
+            free(result);
+            return json_error("Failed to execute command in sandbox");
+        }
+        
+        /* Build response */
+        cJSON* json = cJSON_CreateObject();
+        cJSON_AddStringToObject(json, "command", command);
+        cJSON_AddNumberToObject(json, "exit_code", exit_code);
+        cJSON_AddStringToObject(json, "output", result);
+        cJSON_AddBoolToObject(json, "sandboxed", 1);
+        
+        free(result);
+        return json_result(json);
+    }
+    
+    /* Non-sandbox mode: legacy execution */
+    
     /* Safety check */
     if (g_safe_mode && is_dangerous_command(command)) {
         cJSON* json = cJSON_CreateObject();
@@ -103,7 +165,6 @@ const char* shell_execute(const char* command) {
     
     /* Execute command and capture output */
     char buffer[256];
-    char* result = NULL;
     size_t result_len = 0;
     size_t result_cap = 4096;
     
@@ -136,7 +197,7 @@ const char* shell_execute(const char* command) {
     }
     
     int status = pclose(fp);
-    int exit_code = WEXITSTATUS(status);
+    exit_code = WEXITSTATUS(status);
     
     /* Build response */
     cJSON* json = cJSON_CreateObject();
@@ -155,6 +216,21 @@ const char* shell_execute(const char* command) {
 const char* read_file(const char* path) {
     if (!path || strlen(path) == 0) {
         return json_error("path parameter is required");
+    }
+    
+    /* Sandbox check (even if not "entered", check paths for file operations) */
+    if (g_sandbox) {
+        if (!ac_sandbox_check_path(g_sandbox, path, AC_SANDBOX_PERM_FS_READ)) {
+            cJSON* json = cJSON_CreateObject();
+            cJSON_AddStringToObject(json, "error", "File access blocked by sandbox");
+            cJSON_AddStringToObject(json, "path", path);
+            cJSON_AddStringToObject(json, "reason", ac_sandbox_denial_reason());
+            cJSON_AddStringToObject(json, "ai_hint",
+                "The sandbox policy prevents reading this file. "
+                "The file may be outside the allowed workspace or readonly paths. "
+                "Check if the file is within the project workspace.");
+            return json_result(json);
+        }
     }
     
     /* Open file */
@@ -211,6 +287,22 @@ const char* write_file(const char* path, const char* content) {
         return json_error("content parameter is required");
     }
     
+    /* Sandbox check */
+    if (g_sandbox) {
+        unsigned int perms = AC_SANDBOX_PERM_FS_WRITE | AC_SANDBOX_PERM_FS_CREATE;
+        if (!ac_sandbox_check_path(g_sandbox, path, perms)) {
+            cJSON* json = cJSON_CreateObject();
+            cJSON_AddStringToObject(json, "error", "File write blocked by sandbox");
+            cJSON_AddStringToObject(json, "path", path);
+            cJSON_AddStringToObject(json, "reason", ac_sandbox_denial_reason());
+            cJSON_AddStringToObject(json, "ai_hint",
+                "The sandbox policy prevents writing to this file. "
+                "The path may be outside the allowed workspace. "
+                "Only files within the project workspace can be created or modified.");
+            return json_result(json);
+        }
+    }
+    
     /* Write file */
     FILE* fp = fopen(path, "w");
     if (!fp) {
@@ -239,6 +331,21 @@ const char* write_file(const char* path, const char* content) {
 const char* list_directory(const char* path) {
     if (!path || strlen(path) == 0) {
         return json_error("path parameter is required");
+    }
+    
+    /* Sandbox check */
+    if (g_sandbox) {
+        if (!ac_sandbox_check_path(g_sandbox, path, AC_SANDBOX_PERM_FS_READ)) {
+            cJSON* json = cJSON_CreateObject();
+            cJSON_AddStringToObject(json, "error", "Directory access blocked by sandbox");
+            cJSON_AddStringToObject(json, "path", path);
+            cJSON_AddStringToObject(json, "reason", ac_sandbox_denial_reason());
+            cJSON_AddStringToObject(json, "ai_hint",
+                "The sandbox policy prevents listing this directory. "
+                "The directory may be outside the allowed workspace. "
+                "Only directories within the project workspace can be listed.");
+            return json_result(json);
+        }
     }
     
     /* Open directory */

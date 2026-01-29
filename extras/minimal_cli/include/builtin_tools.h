@@ -83,6 +83,30 @@ AC_TOOL_META double calculator(const char* operation, double a, double b);
  */
 void builtin_tools_set_safe_mode(int enabled);
 
+/*============================================================================
+ * Sandbox Configuration (Internal Use)
+ *============================================================================*/
+
+/* Forward declaration - sandbox handle from ac_hosted */
+struct ac_sandbox;
+
+/**
+ * @brief Set sandbox for tool execution
+ *
+ * When sandbox is set, tools will check permissions before accessing files
+ * or executing commands.
+ *
+ * @param sandbox  Sandbox handle (NULL to disable)
+ */
+void builtin_tools_set_sandbox(struct ac_sandbox *sandbox);
+
+/**
+ * @brief Get current sandbox handle
+ *
+ * @return Current sandbox handle, or NULL if not set
+ */
+struct ac_sandbox *builtin_tools_get_sandbox(void);
+
 #ifdef __cplusplus
 }
 #endif
