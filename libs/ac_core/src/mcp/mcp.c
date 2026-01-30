@@ -18,8 +18,8 @@
 
 /* Weak declarations - resolved at link time if ac_hosted is linked */
 __attribute__((weak)) int ac_http_pool_is_initialized(void);
-__attribute__((weak)) agentc_http_client_t *ac_http_pool_acquire(uint32_t timeout_ms);
-__attribute__((weak)) void ac_http_pool_release(agentc_http_client_t *client);
+__attribute__((weak)) arc_http_client_t *ac_http_pool_acquire(uint32_t timeout_ms);
+__attribute__((weak)) void ac_http_pool_release(arc_http_client_t *client);
 
 /**
  * @brief Check if HTTP pool is available and initialized
@@ -33,7 +33,7 @@ static int http_pool_available(void) {
  *============================================================================*/
 
 extern arena_t *ac_session_get_arena(ac_session_t *session);
-extern agentc_err_t ac_session_add_mcp(ac_session_t *session, ac_mcp_client_t *client);
+extern arc_err_t ac_session_add_mcp(ac_session_t *session, ac_mcp_client_t *client);
 
 /*============================================================================
  * Tool Info Structure
@@ -108,7 +108,7 @@ static char *mcp_build_request(ac_mcp_client_t *client, const char *method, cJSO
 
     /* Per JSON-RPC 2.0 spec: params may be omitted if not needed.
      * Some MCP servers (like 12306-mcp) are strict about this and
-     * return -32602 "Invalid request parameters" if params is {} 
+     * return -32602 "Invalid request parameters" if params is {}
      * instead of being omitted. */
     if (params) {
         cJSON_AddItemToObject(request, "params", params);
@@ -143,7 +143,7 @@ static char *mcp_build_notification(const char *method) {
  * JSON-RPC: Parse Response
  *============================================================================*/
 
-static agentc_err_t mcp_parse_response(
+static arc_err_t mcp_parse_response(
     ac_mcp_client_t *client,
     const char *response_json,
     cJSON **result_out
@@ -151,7 +151,7 @@ static agentc_err_t mcp_parse_response(
     cJSON *json = cJSON_Parse(response_json);
     if (!json) {
         AC_LOG_ERROR("MCP: Failed to parse response JSON");
-        return AGENTC_ERR_PROTOCOL;
+        return ARC_ERR_PROTOCOL;
     }
 
     /* Check for error */
@@ -163,7 +163,7 @@ static agentc_err_t mcp_parse_response(
                      err_code ? (int)cJSON_GetNumberValue(err_code) : -1,
                      err_msg ? cJSON_GetStringValue(err_msg) : "Unknown");
         cJSON_Delete(json);
-        return AGENTC_ERR_PROTOCOL;
+        return ARC_ERR_PROTOCOL;
     }
 
     /* Extract result */
@@ -176,14 +176,14 @@ static agentc_err_t mcp_parse_response(
         cJSON_Delete(result);
     }
 
-    return AGENTC_OK;
+    return ARC_OK;
 }
 
 /*============================================================================
  * MCP RPC Call (Uses Transport)
  *============================================================================*/
 
-static agentc_err_t mcp_rpc_call(
+static arc_err_t mcp_rpc_call(
     ac_mcp_client_t *client,
     const char *method,
     cJSON *params,
@@ -191,21 +191,21 @@ static agentc_err_t mcp_rpc_call(
 ) {
     if (!client || !client->transport || !method) {
         if (params) cJSON_Delete(params);
-        return AGENTC_ERR_INVALID_ARG;
+        return ARC_ERR_INVALID_ARG;
     }
 
     /* Build request */
     char *request_json = mcp_build_request(client, method, params);
     if (!request_json) {
         AC_LOG_ERROR("MCP: Failed to build request");
-        return AGENTC_ERR_MEMORY;
+        return ARC_ERR_MEMORY;
     }
 
     AC_LOG_DEBUG("MCP request: %s (id=%d) -> %s", method, client->request_id, request_json);
 
     /* Send via transport */
     char *response_json = NULL;
-    agentc_err_t err = client->transport->ops->request(
+    arc_err_t err = client->transport->ops->request(
         client->transport,
         request_json,
         client->request_id,
@@ -214,14 +214,14 @@ static agentc_err_t mcp_rpc_call(
 
     free(request_json);
 
-    if (err != AGENTC_OK) {
+    if (err != ARC_OK) {
         AC_LOG_ERROR("MCP: Transport error: %s", client->transport->error_msg);
         return err;
     }
 
     if (!response_json) {
         AC_LOG_ERROR("MCP: No response received");
-        return AGENTC_ERR_PROTOCOL;
+        return ARC_ERR_PROTOCOL;
     }
 
     AC_LOG_DEBUG("MCP response: %.500s%s",
@@ -264,12 +264,12 @@ ac_mcp_client_t *ac_mcp_create(
 
     client->session = session;
     client->arena = arena;
-    client->client_name = arena_strdup(arena, config->client_name ? config->client_name : "AgentC");
+    client->client_name = arena_strdup(arena, config->client_name ? config->client_name : "ArC");
     client->client_version = arena_strdup(arena, config->client_version ? config->client_version : "1.0.0");
 
     /* Get HTTP client: from pool or create new */
-    agentc_http_client_t *http = NULL;
-    
+    arc_http_client_t *http = NULL;
+
     if (http_pool_available()) {
         /* Acquire from pool */
         http = ac_http_pool_acquire(config->timeout_ms ? config->timeout_ms : MCP_DEFAULT_TIMEOUT_MS);
@@ -281,12 +281,12 @@ ac_mcp_client_t *ac_mcp_create(
         AC_LOG_DEBUG("MCP client using HTTP pool");
     } else {
         /* Create own HTTP client */
-        agentc_http_client_config_t http_cfg = {
+        arc_http_client_config_t http_cfg = {
             .default_timeout_ms = config->timeout_ms ? config->timeout_ms : MCP_DEFAULT_TIMEOUT_MS
         };
 
-        agentc_err_t err = agentc_http_client_create(&http_cfg, &http);
-        if (err != AGENTC_OK || !http) {
+        arc_err_t err = arc_http_client_create(&http_cfg, &http);
+        if (err != ARC_OK || !http) {
             AC_LOG_ERROR("Failed to create HTTP client: %s", ac_strerror(err));
             return NULL;
         }
@@ -305,7 +305,7 @@ ac_mcp_client_t *ac_mcp_create(
     if (!client->transport) {
         AC_LOG_ERROR("Failed to create transport");
         if (client->owns_http) {
-            agentc_http_client_destroy(http);
+            arc_http_client_destroy(http);
         } else {
             ac_http_pool_release(http);
         }
@@ -318,7 +318,7 @@ ac_mcp_client_t *ac_mcp_create(
     if (!client->tools) {
         AC_LOG_ERROR("Failed to allocate tool array");
         if (client->owns_http) {
-            agentc_http_client_destroy(http);
+            arc_http_client_destroy(http);
         } else {
             ac_http_pool_release(http);
         }
@@ -326,10 +326,10 @@ ac_mcp_client_t *ac_mcp_create(
     }
 
     /* Register with session */
-    if (ac_session_add_mcp(session, client) != AGENTC_OK) {
+    if (ac_session_add_mcp(session, client) != ARC_OK) {
         AC_LOG_ERROR("Failed to register MCP client with session");
         if (client->owns_http) {
-            agentc_http_client_destroy(http);
+            arc_http_client_destroy(http);
         } else {
             ac_http_pool_release(http);
         }
@@ -346,20 +346,20 @@ ac_mcp_client_t *ac_mcp_create(
  * Connection Management
  *============================================================================*/
 
-agentc_err_t ac_mcp_connect(ac_mcp_client_t *client) {
+arc_err_t ac_mcp_connect(ac_mcp_client_t *client) {
     if (!client || !client->transport) {
-        return AGENTC_ERR_INVALID_ARG;
+        return ARC_ERR_INVALID_ARG;
     }
 
     if (client->transport->connected) {
-        return AGENTC_OK;
+        return ARC_OK;
     }
 
     AC_LOG_INFO("MCP connecting to: %s", client->transport->server_url);
 
     /* Connect transport */
-    agentc_err_t err = client->transport->ops->connect(client->transport);
-    if (err != AGENTC_OK) {
+    arc_err_t err = client->transport->ops->connect(client->transport);
+    if (err != ARC_OK) {
         return err;
     }
 
@@ -378,7 +378,7 @@ agentc_err_t ac_mcp_connect(ac_mcp_client_t *client) {
     cJSON *result = NULL;
     err = mcp_rpc_call(client, "initialize", params, &result);
 
-    if (err != AGENTC_OK) {
+    if (err != ARC_OK) {
         client->transport->ops->disconnect(client->transport);
         return err;
     }
@@ -407,7 +407,7 @@ agentc_err_t ac_mcp_connect(ac_mcp_client_t *client) {
         cJSON_Delete(result);
     }
 
-    /* Send initialized notification (no id, no response expected) 
+    /* Send initialized notification (no id, no response expected)
      * Per MCP spec, this notification is REQUIRED after initialize succeeds.
      * Some servers (like 12306-mcp) may reject subsequent requests without it. */
     char *notif_json = mcp_build_notification("notifications/initialized");
@@ -416,10 +416,10 @@ agentc_err_t ac_mcp_connect(ac_mcp_client_t *client) {
         char *response = NULL;
         /* Send notification; we don't expect a meaningful response but some
          * servers may return an empty response or error which we ignore */
-        agentc_err_t notif_err = client->transport->ops->request(
+        arc_err_t notif_err = client->transport->ops->request(
             client->transport, notif_json, 0, &response);
-        if (notif_err != AGENTC_OK) {
-            AC_LOG_DEBUG("initialized notification send status: %s (may be ignored)", 
+        if (notif_err != ARC_OK) {
+            AC_LOG_DEBUG("initialized notification send status: %s (may be ignored)",
                         ac_strerror(notif_err));
         }
         if (response) {
@@ -434,7 +434,7 @@ agentc_err_t ac_mcp_connect(ac_mcp_client_t *client) {
                 client->server_info.version ? client->server_info.version : "",
                 client->server_info.protocol_version ? client->server_info.protocol_version : "unknown");
 
-    return AGENTC_OK;
+    return ARC_OK;
 }
 
 int ac_mcp_is_connected(const ac_mcp_client_t *client) {
@@ -458,22 +458,22 @@ void ac_mcp_disconnect(ac_mcp_client_t *client) {
  * Tool Discovery
  *============================================================================*/
 
-agentc_err_t ac_mcp_discover_tools(ac_mcp_client_t *client) {
+arc_err_t ac_mcp_discover_tools(ac_mcp_client_t *client) {
     if (!client) {
-        return AGENTC_ERR_INVALID_ARG;
+        return ARC_ERR_INVALID_ARG;
     }
 
     if (!ac_mcp_is_connected(client)) {
         AC_LOG_ERROR("MCP: Not connected");
-        return AGENTC_ERR_NOT_CONNECTED;
+        return ARC_ERR_NOT_CONNECTED;
     }
 
     AC_LOG_INFO("MCP discovering tools...");
 
     cJSON *result = NULL;
-    agentc_err_t err = mcp_rpc_call(client, "tools/list", NULL, &result);
+    arc_err_t err = mcp_rpc_call(client, "tools/list", NULL, &result);
 
-    if (err != AGENTC_OK) {
+    if (err != ARC_OK) {
         return err;
     }
 
@@ -485,7 +485,7 @@ agentc_err_t ac_mcp_discover_tools(ac_mcp_client_t *client) {
     if (!tools || !cJSON_IsArray(tools)) {
         AC_LOG_WARN("No tools array in response");
         cJSON_Delete(result);
-        return AGENTC_OK;
+        return ARC_OK;
     }
 
     int array_size = cJSON_GetArraySize(tools);
@@ -499,7 +499,7 @@ agentc_err_t ac_mcp_discover_tools(ac_mcp_client_t *client) {
         if (!new_tools) {
             AC_LOG_ERROR("Failed to allocate tool array");
             cJSON_Delete(result);
-            return AGENTC_ERR_MEMORY;
+            return ARC_ERR_MEMORY;
         }
         client->tools = new_tools;
         client->tool_capacity = new_cap;
@@ -544,7 +544,7 @@ agentc_err_t ac_mcp_discover_tools(ac_mcp_client_t *client) {
     cJSON_Delete(result);
 
     AC_LOG_INFO("MCP discovered %zu tools", client->tool_count);
-    return AGENTC_OK;
+    return ARC_OK;
 }
 
 size_t ac_mcp_tool_count(const ac_mcp_client_t *client) {
@@ -555,21 +555,21 @@ size_t ac_mcp_tool_count(const ac_mcp_client_t *client) {
  * Tool Execution
  *============================================================================*/
 
-agentc_err_t ac_mcp_call_tool(
+arc_err_t ac_mcp_call_tool(
     ac_mcp_client_t *client,
     const char *name,
     const char *args_json,
     char **result_out
 ) {
     if (!client || !name || !result_out) {
-        return AGENTC_ERR_INVALID_ARG;
+        return ARC_ERR_INVALID_ARG;
     }
 
     *result_out = NULL;
 
     if (!ac_mcp_is_connected(client)) {
         *result_out = strdup("{\"error\":\"MCP not connected\"}");
-        return AGENTC_ERR_NOT_CONNECTED;
+        return ARC_ERR_NOT_CONNECTED;
     }
 
     AC_LOG_INFO("MCP calling tool: %s", name);
@@ -591,9 +591,9 @@ agentc_err_t ac_mcp_call_tool(
     cJSON_AddItemToObject(params, "arguments", arguments);
 
     cJSON *result = NULL;
-    agentc_err_t err = mcp_rpc_call(client, "tools/call", params, &result);
+    arc_err_t err = mcp_rpc_call(client, "tools/call", params, &result);
 
-    if (err != AGENTC_OK) {
+    if (err != ARC_OK) {
         char buf[256];
         snprintf(buf, sizeof(buf), "{\"error\":\"Tool call failed: %s\"}", ac_strerror(err));
         *result_out = strdup(buf);
@@ -605,7 +605,7 @@ agentc_err_t ac_mcp_call_tool(
     if (!content || !cJSON_IsArray(content)) {
         *result_out = strdup("{\"result\":null}");
         cJSON_Delete(result);
-        return AGENTC_OK;
+        return ARC_OK;
     }
 
     /* Concatenate text content */
@@ -625,13 +625,13 @@ agentc_err_t ac_mcp_call_tool(
     if (total_len == 0) {
         *result_out = cJSON_PrintUnformatted(result);
         cJSON_Delete(result);
-        return AGENTC_OK;
+        return ARC_OK;
     }
 
     char *text_result = (char *)malloc(total_len + 64);
     if (!text_result) {
         cJSON_Delete(result);
-        return AGENTC_ERR_MEMORY;
+        return ARC_ERR_MEMORY;
     }
 
     char *p = text_result;
@@ -663,7 +663,7 @@ agentc_err_t ac_mcp_call_tool(
     *result_out = cJSON_PrintUnformatted(json_result);
     cJSON_Delete(json_result);
 
-    return AGENTC_OK;
+    return ARC_OK;
 }
 
 /*============================================================================
@@ -678,7 +678,7 @@ const char *ac_mcp_error(const ac_mcp_client_t *client) {
  * Tool Info Access
  *============================================================================*/
 
-agentc_err_t ac_mcp_get_tool_info(
+arc_err_t ac_mcp_get_tool_info(
     const ac_mcp_client_t *client,
     size_t index,
     const char **name,
@@ -686,7 +686,7 @@ agentc_err_t ac_mcp_get_tool_info(
     const char **parameters
 ) {
     if (!client || index >= client->tool_count) {
-        return AGENTC_ERR_INVALID_ARG;
+        return ARC_ERR_INVALID_ARG;
     }
 
     const mcp_tool_info_t *tool = &client->tools[index];
@@ -695,7 +695,7 @@ agentc_err_t ac_mcp_get_tool_info(
     if (description) *description = tool->description;
     if (parameters) *parameters = tool->parameters;
 
-    return AGENTC_OK;
+    return ARC_OK;
 }
 
 /*============================================================================
@@ -713,7 +713,7 @@ void ac_mcp_cleanup(ac_mcp_client_t *client) {
         /* Release or destroy HTTP client based on ownership */
         if (client->transport->http) {
             if (client->owns_http) {
-                agentc_http_client_destroy(client->transport->http);
+                arc_http_client_destroy(client->transport->http);
             } else {
                 ac_http_pool_release(client->transport->http);
             }
@@ -902,7 +902,7 @@ void ac_mcp_config_free(ac_mcp_servers_config_t *config) {
 }
 
 /* Forward declaration */
-agentc_err_t ac_tool_registry_add_mcp(
+arc_err_t ac_tool_registry_add_mcp(
     ac_tool_registry_t *registry,
     ac_mcp_client_t *mcp
 );
@@ -942,15 +942,15 @@ size_t ac_mcp_connect_all(
             continue;
         }
 
-        agentc_err_t err = ac_mcp_connect(client);
-        if (err != AGENTC_OK) {
+        arc_err_t err = ac_mcp_connect(client);
+        if (err != ARC_OK) {
             AC_LOG_WARN("Failed to connect to MCP server %s: %s",
                         server_name, ac_strerror(err));
             continue;
         }
 
         err = ac_mcp_discover_tools(client);
-        if (err != AGENTC_OK) {
+        if (err != ARC_OK) {
             AC_LOG_WARN("Failed to discover tools from %s: %s",
                         server_name, ac_strerror(err));
             continue;
@@ -959,7 +959,7 @@ size_t ac_mcp_connect_all(
         size_t tool_count = ac_mcp_tool_count(client);
 
         err = ac_tool_registry_add_mcp(registry, client);
-        if (err != AGENTC_OK) {
+        if (err != ARC_OK) {
             AC_LOG_WARN("Failed to add tools from %s: %s",
                         server_name, ac_strerror(err));
             continue;

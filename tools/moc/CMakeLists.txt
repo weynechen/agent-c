@@ -1,4 +1,4 @@
-# MOC (Meta-Object Compiler) for AgentC
+# MOC (Meta-Object Compiler) for ArC
 #
 # This tool parses C header files with AC_TOOL_META markers and generates
 # wrapper functions and tool registration code.
@@ -104,22 +104,22 @@ endif()
 #
 function(moc_generate_tools)
     cmake_parse_arguments(MOC "" "INPUT;OUTPUT_NAME;OUTPUT_DIR" "" ${ARGN})
-    
+
     if(NOT MOC_INPUT)
         message(FATAL_ERROR "moc_generate_tools: INPUT is required")
     endif()
-    
+
     if(NOT MOC_OUTPUT_NAME)
         set(MOC_OUTPUT_NAME "tools_gen")
     endif()
-    
+
     if(NOT MOC_OUTPUT_DIR)
         set(MOC_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR})
     endif()
-    
+
     set(MOC_OUTPUT_H "${MOC_OUTPUT_DIR}/${MOC_OUTPUT_NAME}.h")
     set(MOC_OUTPUT_C "${MOC_OUTPUT_DIR}/${MOC_OUTPUT_NAME}.c")
-    
+
     add_custom_command(
         OUTPUT ${MOC_OUTPUT_H} ${MOC_OUTPUT_C}
         COMMAND moc -o "${MOC_OUTPUT_DIR}/${MOC_OUTPUT_NAME}" "${MOC_INPUT}"
@@ -127,7 +127,7 @@ function(moc_generate_tools)
         COMMENT "Running MOC on ${MOC_INPUT}"
         VERBATIM
     )
-    
+
     set(MOC_GENERATED_SOURCES ${MOC_OUTPUT_C} PARENT_SCOPE)
     set(MOC_GENERATED_HEADERS ${MOC_OUTPUT_H} PARENT_SCOPE)
 endfunction()

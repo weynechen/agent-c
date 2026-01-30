@@ -29,7 +29,7 @@ static const char *HEADER_TEMPLATE_START =
     "#ifndef %s_H\n"
     "#define %s_H\n"
     "\n"
-    "#include <agentc/tool.h>\n"
+    "#include <arc/tool.h>\n"
     "\n"
     "#ifdef __cplusplus\n"
     "extern \"C\" {\n"
@@ -208,8 +208,8 @@ static const char *get_basename(const char *path) {
 static void generate_description(FILE *out, const moc_tool_t *tool) {
     char escaped_desc[MOC_MAX_DESC_LEN * 2];
     escape_json_string(tool->description, escaped_desc, sizeof(escaped_desc));
-    
-    fprintf(out, "static const char DESC_%s[] = \"%s\";\n\n", 
+
+    fprintf(out, "static const char DESC_%s[] = \"%s\";\n\n",
             tool->name, escaped_desc);
 }
 
@@ -220,30 +220,30 @@ static void generate_parameters_schema(FILE *out, const moc_tool_t *tool) {
     fprintf(out, "static const char PARAMS_%s[] = \n", tool->name);
     fprintf(out, "    \"{\\\"type\\\":\\\"object\\\",\"\n");
     fprintf(out, "    \"\\\"properties\\\":{");
-    
+
     for (int i = 0; i < tool->param_count; i++) {
         const moc_param_t *param = &tool->params[i];
         char escaped_desc[MOC_MAX_DESC_LEN * 2];
         escape_json_string(param->description, escaped_desc, sizeof(escaped_desc));
-        
+
         fprintf(out, "\\\"%s\\\":{\\\"type\\\":\\\"%s\\\",\\\"description\\\":\\\"%s\\\"}",
                 param->name, moc_type_to_json_schema(param->type), escaped_desc);
-        
+
         if (i < tool->param_count - 1) {
             fprintf(out, ",");
         }
     }
-    
+
     fprintf(out, "},\"\n");
     fprintf(out, "    \"\\\"required\\\":[");
-    
+
     for (int i = 0; i < tool->param_count; i++) {
         fprintf(out, "\\\"%s\\\"", tool->params[i].name);
         if (i < tool->param_count - 1) {
             fprintf(out, ",");
         }
     }
-    
+
     fprintf(out, "]}\";\n\n");
 }
 
@@ -466,7 +466,7 @@ int moc_generate_source(moc_ctx_t *ctx, FILE *out) {
     fprintf(out, "/*============================================================================\n");
     fprintf(out, " * Tool Metadata\n");
     fprintf(out, " *============================================================================*/\n\n");
-    
+
     for (int i = 0; i < ctx->tool_count; i++) {
         generate_description(out, &ctx->tools[i]);
         generate_parameters_schema(out, &ctx->tools[i]);

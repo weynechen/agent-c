@@ -4,7 +4,7 @@ This directory is reserved for custom LLM provider implementations.
 
 ## Built-in Providers
 
-AgentC includes the following built-in providers in the parent directory:
+ArC includes the following built-in providers in the parent directory:
 
 - **openai_api.c**: OpenAI-compatible API implementation
   - Supports: OpenAI, DeepSeek, 通义千问, 智谱AI, and other OpenAI-compatible services
@@ -22,7 +22,7 @@ To add a custom provider:
 2. Implement the provider interface:
 
 ```c
-#include "agentc/llm.h"
+#include "arc/llm.h"
 
 // Provider-specific initialization
 ac_llm_t* custom_provider_create(const ac_llm_config_t* config) {

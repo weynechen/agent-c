@@ -1,4 +1,4 @@
-# AgentC
+# ArC
 
 An Agent library written in C. Supports both hosted(windows/Linux/macos) and RTOS environments, requiring only POSIX Thread and HTTP connection dependencies.
 

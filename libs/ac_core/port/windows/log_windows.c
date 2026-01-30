@@ -1,11 +1,11 @@
 /**
  * @file log_windows.c
  * @brief Windows platform logging implementation
- * 
+ *
  * Outputs colored logs to console using Windows Console API.
  */
 
-#include "agentc/log.h"
+#include "arc/log.h"
 #include <stdio.h>
 #include <time.h>
 #include <string.h>
@@ -83,19 +83,19 @@ void ac_log_platform_default_handler(
     // Print log prefix with color
     WORD color = get_level_color(level);
     const char* level_str = get_level_string(level);
-    
+
     SetConsoleTextAttribute(console, color);
     fprintf(stderr, "[%s] [%s] ", time_buf, level_str);
     SetConsoleTextAttribute(console, original_color);
-    
+
     // Print message
     vfprintf(stderr, fmt, args);
-    
+
     // Print source location in gray
     SetConsoleTextAttribute(console, COLOR_GRAY);
     fprintf(stderr, " (%s:%d %s)\n", get_basename(file), line, func);
     SetConsoleTextAttribute(console, original_color);
-    
+
     fflush(stderr);
 }
 

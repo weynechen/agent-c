@@ -28,7 +28,7 @@
 static void print_usage(const char *prog_name) {
     printf("Usage: %s [options] <input.h>\n", prog_name);
     printf("\n");
-    printf("MOC (Meta-Object Compiler) for AgentC Tool Generation\n");
+    printf("MOC (Meta-Object Compiler) for ArC Tool Generation\n");
     printf("\n");
     printf("Parses C header files with AC_TOOL_META markers and Doxygen-style\n");
     printf("comments, generating wrapper functions and tool registration code.\n");
@@ -53,7 +53,7 @@ static void print_usage(const char *prog_name) {
 
 static void print_version(void) {
     printf("MOC (Meta-Object Compiler) version 1.0.0\n");
-    printf("Part of AgentC - C-native AI Agent Framework\n");
+    printf("Part of ArC - C-native AI Agent Framework\n");
 }
 
 /*============================================================================

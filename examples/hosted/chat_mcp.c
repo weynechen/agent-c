@@ -30,7 +30,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <agentc.h>
+#include <arc.h>
 
 /* Platform wrapper for terminal UTF-8 support and argument encoding */
 #include "platform_wrap.h"
@@ -50,7 +50,7 @@
 
 static void print_usage(const char *prog) {
     printf("Usage: %s <prompt>\n\n", prog);
-    printf("AgentC MCP Integration Demo\n\n");
+    printf("ArC MCP Integration Demo\n\n");
     printf("This demo shows how to combine builtin tools (from MOC) with\n");
     printf("dynamically discovered MCP tools in a single agent.\n\n");
     printf("Examples:\n");
@@ -104,7 +104,7 @@ int main(int argc, char *argv[]) {
     const char *model = getenv("OPENAI_MODEL");
     if (!model) model = "gpt-4o-mini";
 
-    printf("=== AgentC MCP Integration Demo ===\n");
+    printf("=== ArC MCP Integration Demo ===\n");
     printf("Model: %s\n", model);
     if (base_url) printf("API URL: %s\n", base_url);
     printf("\n");
@@ -112,7 +112,7 @@ int main(int argc, char *argv[]) {
     /*========================================================================
      * Step 1: Open session
      *========================================================================*/
-    
+
     ac_session_t *session = ac_session_open();
     if (!session) {
         AC_LOG_ERROR("Failed to open session");
@@ -124,7 +124,7 @@ int main(int argc, char *argv[]) {
     /*========================================================================
      * Step 2: Create tool registry
      *========================================================================*/
-    
+
     ac_tool_registry_t *tools = ac_tool_registry_create(session);
     if (!tools) {
         AC_LOG_ERROR("Failed to create tool registry");
@@ -137,41 +137,41 @@ int main(int argc, char *argv[]) {
     /*========================================================================
      * Step 3: Add builtin tools (from MOC)
      *========================================================================*/
-    
+
     printf("Adding builtin tools...\n");
-    
-    agentc_err_t err = ac_tool_registry_add_array(tools, 
+
+    arc_err_t err = ac_tool_registry_add_array(tools,
         AC_TOOLS(get_current_time, calculator, get_weather, convert_temperature, random_number)
     );
-    
-    if (err != AGENTC_OK) {
+
+    if (err != ARC_OK) {
         AC_LOG_WARN("Failed to add some builtin tools: %s", ac_strerror(err));
     }
-    
+
     printf("  Builtin tools: %zu\n", ac_tool_registry_count(tools));
 
     /*========================================================================
      * Step 4: Load MCP configuration and connect to servers
-     * 
+     *
      * Configuration is loaded from .mcp.json file.
      * This is a dotfile to protect API keys.
      *========================================================================*/
-    
+
     printf("\nLoading MCP configuration from .mcp.json...\n");
-    
+
     ac_mcp_servers_config_t *mcp_config = ac_mcp_load_config(NULL);
-    
+
     if (mcp_config) {
         size_t total = ac_mcp_config_server_count(mcp_config);
         size_t enabled = ac_mcp_config_enabled_count(mcp_config);
         printf("  Found %zu servers (%zu enabled)\n", total, enabled);
-        
+
         if (enabled > 0) {
             printf("\nConnecting to MCP servers...\n");
             size_t connected = ac_mcp_connect_all(session, mcp_config, tools);
             printf("  Connected: %zu/%zu\n", connected, enabled);
         }
-        
+
         ac_mcp_config_free(mcp_config);
     } else {
         printf("  No .mcp.json found (MCP disabled)\n");
@@ -181,10 +181,10 @@ int main(int argc, char *argv[]) {
     /*========================================================================
      * Step 5: Show all available tools
      *========================================================================*/
-    
+
     size_t total_tools = ac_tool_registry_count(tools);
     printf("\nTotal tools available: %zu\n", total_tools);
-    
+
     /* Generate and show schema (for debugging) */
     char *schema = ac_tool_registry_schema(tools);
     if (schema) {
@@ -195,12 +195,12 @@ int main(int argc, char *argv[]) {
     /*========================================================================
      * Step 6: Create agent with the tool registry
      *========================================================================*/
-    
+
     printf("\nCreating agent...\n");
-    
+
     ac_agent_t *agent = ac_agent_create(session, &(ac_agent_params_t){
         .name = "MCPAgent",
-        .instructions = 
+        .instructions =
             "You are a helpful assistant with access to various tools.\n"
             "Use the available tools to help answer user questions.\n"
             "Always prefer using tools when they can provide accurate information.\n"
@@ -226,11 +226,11 @@ int main(int argc, char *argv[]) {
     /*========================================================================
      * Step 7: Run the agent
      *========================================================================*/
-    
+
     printf("\n[User] %s\n\n", user_prompt);
-    
+
     ac_agent_result_t *result = ac_agent_run(agent, user_prompt);
-    
+
     if (result && result->content) {
         printf("[Assistant] %s\n\n", result->content);
     } else {
@@ -240,10 +240,10 @@ int main(int argc, char *argv[]) {
     /*========================================================================
      * Step 8: Cleanup
      *========================================================================*/
-    
+
     printf("Closing session...\n");
     ac_session_close(session);
-    
+
     platform_free_argv_utf8(utf8_argv, argc);
     platform_cleanup_terminal();
 

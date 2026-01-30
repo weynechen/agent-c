@@ -163,14 +163,14 @@ void ac_memory_destroy(ac_memory_t *memory);
  *
  * 添加后自动检查是否超出限制，必要时触发截断策略。
  */
-agentc_err_t ac_memory_add(ac_memory_t *memory, const ac_message_t *message);
+arc_err_t ac_memory_add(ac_memory_t *memory, const ac_message_t *message);
 
 /**
  * @brief 设置系统消息
  *
  * 系统消息始终保留，不受截断策略影响。
  */
-agentc_err_t ac_memory_set_system(ac_memory_t *memory, const char *content);
+arc_err_t ac_memory_set_system(ac_memory_t *memory, const char *content);
 
 /**
  * @brief 获取所有消息
@@ -226,7 +226,7 @@ size_t ac_memory_estimate_tokens(const ac_message_t *message);
  *
  * 将消息列表截断到指定的 token 预算内。
  */
-agentc_err_t ac_memory_truncate(ac_memory_t *memory, size_t target_tokens);
+arc_err_t ac_memory_truncate(ac_memory_t *memory, size_t target_tokens);
 ```
 
 ### 3.3 Token 估算策略
@@ -330,7 +330,7 @@ Provider 保持构建 API 请求的自由度，因为不同的 LLM API 有不同
 ```c
 // openai.c 中的使用方式
 
-static agentc_err_t openai_chat(
+static arc_err_t openai_chat(
     void* priv_data,
     const ac_llm_params_t* params,
     const ac_message_t* messages,  // 由调用方提供，可来自 Memory
@@ -372,7 +372,7 @@ char* ac_agent_run(ac_agent_t* agent, const char* input) {
     
     // 3. 调用 LLM
     ac_chat_response_t response;
-    agentc_err_t err = ac_llm_chat_with_tools(
+    arc_err_t err = ac_llm_chat_with_tools(
         agent->llm, messages, agent->tools_json, &response
     );
     
@@ -507,8 +507,8 @@ size_t ac_message_stream_next(ac_message_stream_t* stream, char* buf, size_t len
 
 | 文件 | 当前状态 | 职责 |
 |------|----------|------|
-| `include/agentc/memory.h` | 接口已定义 | Memory 公共 API |
-| `include/agentc/message.h` | 已实现 | Message 结构和 API |
+| `include/arc/memory.h` | 接口已定义 | Memory 公共 API |
+| `include/arc/message.h` | 已实现 | Message 结构和 API |
 | `src/memory/message.c` | 已实现 | Message 创建和操作 |
 | `src/llm/message/message_json.c` | 已实现 | Message ↔ JSON 转换 |
 
@@ -517,7 +517,7 @@ size_t ac_message_stream_next(ac_message_stream_t* stream, char* buf, size_t len
 | 文件 | 操作 | 说明 |
 |------|------|------|
 | `src/memory/memory.c` | 新增 | Memory 模块实现 |
-| `include/agentc/memory.h` | 修改 | 添加新接口（token 预算相关） |
+| `include/arc/memory.h` | 修改 | 添加新接口（token 预算相关） |
 | `src/llm/providers/openai.c` | 保持 | 无需修改，继续使用现有方式 |
 
 ## 9. 总结

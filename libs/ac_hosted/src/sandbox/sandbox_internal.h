@@ -6,10 +6,10 @@
  * This header is NOT part of the public API.
  */
 
-#ifndef AGENTC_SANDBOX_INTERNAL_H
-#define AGENTC_SANDBOX_INTERNAL_H
+#ifndef ARC_SANDBOX_INTERNAL_H
+#define ARC_SANDBOX_INTERNAL_H
 
-#include <agentc/sandbox.h>
+#include <arc/sandbox.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,21 +29,21 @@ struct ac_sandbox {
     int allow_process_exec;
     int strict_mode;
     int log_violations;
-    
+
     /* State */
     int is_active;
     ac_sandbox_backend_t backend;
     ac_sandbox_level_t level;
-    
+
     /* Human-in-the-loop callback */
     ac_sandbox_confirm_fn confirm_callback;
     void *confirm_user_data;
-    
+
     /* Session-level permissions (from ALLOW_SESSION responses) */
     int session_allow_dangerous_commands;
     int session_allow_external_paths;
     int session_allow_network;
-    
+
     /* Platform-specific data */
     void *platform_data;
 };
@@ -127,4 +127,4 @@ int ac_sandbox_macos_seatbelt_available(void);
 }
 #endif
 
-#endif /* AGENTC_SANDBOX_INTERNAL_H */
+#endif /* ARC_SANDBOX_INTERNAL_H */

@@ -1,26 +1,26 @@
 /**
  * @file http_client.h
- * @brief AgentC HTTP Client Platform Abstraction Layer
+ * @brief ArC HTTP Client Platform Abstraction Layer
  *
  * This header defines a platform-agnostic HTTP client interface.
  * Platform-specific implementations:
  * - POSIX: libcurl (port/posix/http/http_curl.c)
  * - Windows: WinHTTP (port/windows/http/http_winhttp.c)
  * - FreeRTOS: mongoose+mbedTLS (port/freertos/http/http_mongoose.c)
- * 
+ *
  * Used by:
  * - LLM providers (openai.c, anthropic.c)
  * - MCP client (ac_hosted/mcp.c)
- * 
+ *
  * NOTE: This is an internal port layer header, not part of public API.
  */
 
-#ifndef AGENTC_HTTP_CLIENT_H
-#define AGENTC_HTTP_CLIENT_H
+#ifndef ARC_HTTP_CLIENT_H
+#define ARC_HTTP_CLIENT_H
 
 #include <stddef.h>
 #include <stdint.h>
-#include "agentc/error.h"
+#include "arc/error.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -31,22 +31,22 @@ extern "C" {
  *============================================================================*/
 
 typedef enum {
-    AGENTC_HTTP_GET,
-    AGENTC_HTTP_POST,
-    AGENTC_HTTP_PUT,
-    AGENTC_HTTP_DELETE,
-    AGENTC_HTTP_PATCH,
-} agentc_http_method_t;
+    ARC_HTTP_GET,
+    ARC_HTTP_POST,
+    ARC_HTTP_PUT,
+    ARC_HTTP_DELETE,
+    ARC_HTTP_PATCH,
+} arc_http_method_t;
 
 /*============================================================================
  * HTTP Headers (linked list)
  *============================================================================*/
 
-typedef struct agentc_http_header {
+typedef struct arc_http_header {
     const char *name;
     const char *value;
-    struct agentc_http_header *next;
-} agentc_http_header_t;
+    struct arc_http_header *next;
+} arc_http_header_t;
 
 /*============================================================================
  * HTTP Request Configuration
@@ -54,13 +54,13 @@ typedef struct agentc_http_header {
 
 typedef struct {
     const char *url;                    /* Full URL (https://api.openai.com/v1/...) */
-    agentc_http_method_t method;        /* HTTP method */
-    agentc_http_header_t *headers;      /* Request headers (linked list) */
+    arc_http_method_t method;        /* HTTP method */
+    arc_http_header_t *headers;      /* Request headers (linked list) */
     const char *body;                   /* Request body (NULL for GET) */
     size_t body_len;                    /* Body length (0 = strlen if body is string) */
     uint32_t timeout_ms;                /* Request timeout in milliseconds */
     int verify_ssl;                     /* 1 = verify SSL cert, 0 = skip (dev only) */
-} agentc_http_request_t;
+} arc_http_request_t;
 
 /*============================================================================
  * HTTP Response
@@ -68,11 +68,11 @@ typedef struct {
 
 typedef struct {
     int status_code;                    /* HTTP status code (200, 404, etc.) */
-    agentc_http_header_t *headers;      /* Response headers */
+    arc_http_header_t *headers;      /* Response headers */
     char *body;                         /* Response body (caller must free) */
     size_t body_len;                    /* Body length */
     char *error_msg;                    /* Error message if failed (caller must free) */
-} agentc_http_response_t;
+} arc_http_response_t;
 
 /*============================================================================
  * Streaming Callback (for SSE / chunked responses)
@@ -81,7 +81,7 @@ typedef struct {
  * Return 0 to continue, non-zero to abort.
  *============================================================================*/
 
-typedef int (*agentc_stream_callback_t)(
+typedef int (*arc_stream_callback_t)(
     const char *data,                   /* Chunk data */
     size_t len,                         /* Chunk length */
     void *user_data                     /* User context */
@@ -92,16 +92,16 @@ typedef int (*agentc_stream_callback_t)(
  *============================================================================*/
 
 typedef struct {
-    agentc_http_request_t base;         /* Base request config */
-    agentc_stream_callback_t on_data;   /* Callback for each chunk */
+    arc_http_request_t base;         /* Base request config */
+    arc_stream_callback_t on_data;   /* Callback for each chunk */
     void *user_data;                    /* User context passed to callback */
-} agentc_http_stream_request_t;
+} arc_http_stream_request_t;
 
 /*============================================================================
  * Client Handle (opaque)
  *============================================================================*/
 
-typedef struct agentc_http_client agentc_http_client_t;
+typedef struct arc_http_client arc_http_client_t;
 
 /*============================================================================
  * Client Configuration
@@ -113,7 +113,7 @@ typedef struct {
     size_t ca_cert_len;                 /* CA cert data length */
     uint32_t default_timeout_ms;        /* Default timeout (0 = 30000) */
     size_t max_response_size;           /* Max response body size (0 = 10MB) */
-} agentc_http_client_config_t;
+} arc_http_client_config_t;
 
 /*============================================================================
  * API Functions
@@ -124,11 +124,11 @@ typedef struct {
  *
  * @param config  Client configuration (NULL for defaults)
  * @param out     Output client handle
- * @return AGENTC_OK on success, error code otherwise
+ * @return ARC_OK on success, error code otherwise
  */
-agentc_err_t agentc_http_client_create(
-    const agentc_http_client_config_t *config,
-    agentc_http_client_t **out
+arc_err_t arc_http_client_create(
+    const arc_http_client_config_t *config,
+    arc_http_client_t **out
 );
 
 /**
@@ -136,7 +136,7 @@ agentc_err_t agentc_http_client_create(
  *
  * @param client  Client handle
  */
-void agentc_http_client_destroy(agentc_http_client_t *client);
+void arc_http_client_destroy(arc_http_client_t *client);
 
 /**
  * @brief Perform a synchronous HTTP request
@@ -145,13 +145,13 @@ void agentc_http_client_destroy(agentc_http_client_t *client);
  *
  * @param client    Client handle
  * @param request   Request configuration
- * @param response  Output response (caller must free with agentc_http_response_free)
- * @return AGENTC_OK on success, error code otherwise
+ * @param response  Output response (caller must free with arc_http_response_free)
+ * @return ARC_OK on success, error code otherwise
  */
-agentc_err_t agentc_http_request(
-    agentc_http_client_t *client,
-    const agentc_http_request_t *request,
-    agentc_http_response_t *response
+arc_err_t arc_http_request(
+    arc_http_client_t *client,
+    const arc_http_request_t *request,
+    arc_http_response_t *response
 );
 
 /**
@@ -163,12 +163,12 @@ agentc_err_t agentc_http_request(
  * @param client    Client handle
  * @param request   Streaming request configuration
  * @param response  Output response (headers + final status, body may be empty)
- * @return AGENTC_OK on success, error code otherwise
+ * @return ARC_OK on success, error code otherwise
  */
-agentc_err_t agentc_http_request_stream(
-    agentc_http_client_t *client,
-    const agentc_http_stream_request_t *request,
-    agentc_http_response_t *response
+arc_err_t arc_http_request_stream(
+    arc_http_client_t *client,
+    const arc_http_stream_request_t *request,
+    arc_http_response_t *response
 );
 
 /**
@@ -176,7 +176,7 @@ agentc_err_t agentc_http_request_stream(
  *
  * @param response  Response to free
  */
-void agentc_http_response_free(agentc_http_response_t *response);
+void arc_http_response_free(arc_http_response_t *response);
 
 /*============================================================================
  * Header Helper Functions
@@ -189,7 +189,7 @@ void agentc_http_response_free(agentc_http_response_t *response);
  * @param value  Header value
  * @return New header node (caller must free), NULL on error
  */
-agentc_http_header_t *agentc_http_header_create(const char *name, const char *value);
+arc_http_header_t *arc_http_header_create(const char *name, const char *value);
 
 /**
  * @brief Append header to list
@@ -197,7 +197,7 @@ agentc_http_header_t *agentc_http_header_create(const char *name, const char *va
  * @param list   Pointer to header list head
  * @param header Header to append
  */
-void agentc_http_header_append(agentc_http_header_t **list, agentc_http_header_t *header);
+void arc_http_header_append(arc_http_header_t **list, arc_http_header_t *header);
 
 /**
  * @brief Find header by name (case-insensitive)
@@ -206,8 +206,8 @@ void agentc_http_header_append(agentc_http_header_t **list, agentc_http_header_t
  * @param name  Header name to find
  * @return Header node or NULL if not found
  */
-const agentc_http_header_t *agentc_http_header_find(
-    const agentc_http_header_t *list,
+const arc_http_header_t *arc_http_header_find(
+    const arc_http_header_t *list,
     const char *name
 );
 
@@ -216,18 +216,18 @@ const agentc_http_header_t *agentc_http_header_find(
  *
  * @param list  Header list to free
  */
-void agentc_http_header_free(agentc_http_header_t *list);
+void arc_http_header_free(arc_http_header_t *list);
 
 /*============================================================================
  * Convenience Macros
  *============================================================================*/
 
 /* Quick JSON POST request setup */
-#define AGENTC_HTTP_JSON_HEADERS(auth_token) \
-    &(agentc_http_header_t){ \
+#define ARC_HTTP_JSON_HEADERS(auth_token) \
+    &(arc_http_header_t){ \
         .name = "Content-Type", \
         .value = "application/json", \
-        .next = &(agentc_http_header_t){ \
+        .next = &(arc_http_header_t){ \
             .name = "Authorization", \
             .value = "Bearer " auth_token, \
             .next = NULL \
@@ -238,4 +238,4 @@ void agentc_http_header_free(agentc_http_header_t *list);
 }
 #endif
 
-#endif /* AGENTC_HTTP_CLIENT_H */
+#endif /* ARC_HTTP_CLIENT_H */

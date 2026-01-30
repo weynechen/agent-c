@@ -3,8 +3,8 @@
  * @brief Rules Management Implementation
  */
 
-#include <agentc/rules.h>
-#include <agentc/log.h>
+#include <arc/rules.h>
+#include <arc/log.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -37,26 +37,26 @@ static char *read_file_content(const char *filepath) {
         AC_LOG_ERROR("Failed to open file: %s", filepath);
         return NULL;
     }
-    
+
     fseek(fp, 0, SEEK_END);
     long size = ftell(fp);
     fseek(fp, 0, SEEK_SET);
-    
+
     if (size <= 0) {
         fclose(fp);
         return NULL;
     }
-    
+
     char *content = malloc(size + 1);
     if (!content) {
         fclose(fp);
         return NULL;
     }
-    
+
     size_t read = fread(content, 1, size, fp);
     content[read] = '\0';
     fclose(fp);
-    
+
     return content;
 }
 
@@ -77,91 +77,91 @@ ac_rules_t *ac_rules_create(void) {
     return rules;
 }
 
-agentc_err_t ac_rules_load_dir(ac_rules_t *rules, const char *rules_dir) {
+arc_err_t ac_rules_load_dir(ac_rules_t *rules, const char *rules_dir) {
     if (!rules || !rules_dir) {
-        return AGENTC_ERR_INVALID_ARG;
+        return ARC_ERR_INVALID_ARG;
     }
-    
+
     DIR *dir = opendir(rules_dir);
     if (!dir) {
         AC_LOG_WARN("Rules directory not found: %s", rules_dir);
-        return AGENTC_OK;  /* Not an error if directory doesn't exist */
+        return ARC_OK;  /* Not an error if directory doesn't exist */
     }
-    
+
     struct dirent *entry;
     int loaded = 0;
     while ((entry = readdir(dir)) != NULL) {
         if (entry->d_type != DT_REG && entry->d_type != DT_UNKNOWN) {
             continue;
         }
-        
+
         if (!is_rule_file(entry->d_name)) {
             continue;
         }
-        
+
         char filepath[1024];
         snprintf(filepath, sizeof(filepath), "%s/%s", rules_dir, entry->d_name);
-        
-        if (ac_rules_load_file(rules, filepath) == AGENTC_OK) {
+
+        if (ac_rules_load_file(rules, filepath) == ARC_OK) {
             loaded++;
         }
     }
-    
+
     closedir(dir);
-    
+
     AC_LOG_INFO("Loaded %d rules from %s", loaded, rules_dir);
-    return AGENTC_OK;
+    return ARC_OK;
 }
 
-agentc_err_t ac_rules_load_file(ac_rules_t *rules, const char *filepath) {
+arc_err_t ac_rules_load_file(ac_rules_t *rules, const char *filepath) {
     if (!rules || !filepath) {
-        return AGENTC_ERR_INVALID_ARG;
+        return ARC_ERR_INVALID_ARG;
     }
-    
+
     char *content = read_file_content(filepath);
     if (!content) {
         AC_LOG_WARN("Failed to read rule file: %s", filepath);
-        return AGENTC_ERR_IO;
+        return ARC_ERR_IO;
     }
-    
+
     /* TODO: Parse YAML if it's a .yaml/.yml file
      * For now, treat all files as plain text
      */
-    
+
     const char *name = extract_filename(filepath);
-    agentc_err_t err = ac_rules_add(rules, name, content, 0);
-    
+    arc_err_t err = ac_rules_add(rules, name, content, 0);
+
     free(content);
     return err;
 }
 
-agentc_err_t ac_rules_add(
+arc_err_t ac_rules_add(
     ac_rules_t *rules,
     const char *name,
     const char *content,
     int priority
 ) {
     if (!rules || !name || !content) {
-        return AGENTC_ERR_INVALID_ARG;
+        return ARC_ERR_INVALID_ARG;
     }
-    
+
     ac_rule_t *rule = calloc(1, sizeof(ac_rule_t));
     if (!rule) {
         AC_LOG_ERROR("Failed to allocate rule");
-        return AGENTC_ERR_MEMORY;
+        return ARC_ERR_MEMORY;
     }
-    
+
     rule->name = strdup(name);
     rule->content = strdup(content);
     rule->priority = priority;
-    
+
     if (!rule->name || !rule->content) {
         free(rule->name);
         free(rule->content);
         free(rule);
-        return AGENTC_ERR_MEMORY;
+        return ARC_ERR_MEMORY;
     }
-    
+
     /* Insert in priority order (higher priority first) */
     if (!rules->head || rules->head->priority < priority) {
         rule->next = rules->head;
@@ -174,18 +174,18 @@ agentc_err_t ac_rules_add(
         rule->next = curr->next;
         curr->next = rule;
     }
-    
+
     rules->count++;
     AC_LOG_DEBUG("Added rule: %s (priority=%d)", name, priority);
-    
-    return AGENTC_OK;
+
+    return ARC_OK;
 }
 
 char *ac_rules_build_prompt(ac_rules_t *rules, const char *base_prompt) {
     if (!rules) {
         return base_prompt ? strdup(base_prompt) : NULL;
     }
-    
+
     /* Calculate total size */
     size_t total_size = base_prompt ? strlen(base_prompt) : 0;
     ac_rule_t *rule = rules->head;
@@ -193,18 +193,18 @@ char *ac_rules_build_prompt(ac_rules_t *rules, const char *base_prompt) {
         total_size += strlen(rule->content) + 2;  /* +2 for newlines */
         rule = rule->next;
     }
-    
+
     if (total_size == 0) {
         return NULL;
     }
-    
+
     /* Allocate buffer */
     char *prompt = malloc(total_size + 1);
     if (!prompt) {
         AC_LOG_ERROR("Failed to allocate prompt buffer");
         return NULL;
     }
-    
+
     /* Build prompt */
     char *ptr = prompt;
     if (base_prompt) {
@@ -212,7 +212,7 @@ char *ac_rules_build_prompt(ac_rules_t *rules, const char *base_prompt) {
         memcpy(ptr, base_prompt, len);
         ptr += len;
     }
-    
+
     rule = rules->head;
     while (rule) {
         *ptr++ = '\n';
@@ -223,10 +223,10 @@ char *ac_rules_build_prompt(ac_rules_t *rules, const char *base_prompt) {
         rule = rule->next;
     }
     *ptr = '\0';
-    
-    AC_LOG_DEBUG("Built system prompt with %zu rules (%zu bytes)", 
+
+    AC_LOG_DEBUG("Built system prompt with %zu rules (%zu bytes)",
                  rules->count, total_size);
-    
+
     return prompt;
 }
 
@@ -242,7 +242,7 @@ void ac_rules_clear(ac_rules_t *rules) {
     if (!rules) {
         return;
     }
-    
+
     ac_rule_t *curr = rules->head;
     while (curr) {
         ac_rule_t *next = curr->next;
@@ -251,7 +251,7 @@ void ac_rules_clear(ac_rules_t *rules) {
         free(curr);
         curr = next;
     }
-    
+
     rules->head = NULL;
     rules->count = 0;
 }
@@ -260,9 +260,9 @@ void ac_rules_destroy(ac_rules_t *rules) {
     if (!rules) {
         return;
     }
-    
+
     ac_rules_clear(rules);
     free(rules);
-    
+
     AC_LOG_DEBUG("Destroyed rules manager");
 }

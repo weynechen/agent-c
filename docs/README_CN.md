@@ -1,4 +1,4 @@
-# AgentC
+# ArC
 
 一个用 C 语言编写的 Agent 库。支持hosted(Windows/Linux/MacOS)环境和RTOS环境，仅需依赖POSIX Thread，以及http连接。[[README_CN.md]]
 

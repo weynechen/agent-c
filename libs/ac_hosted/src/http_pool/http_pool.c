@@ -6,9 +6,9 @@
  * Uses pthread for synchronization and condition variables for waiting.
  */
 
-#include "agentc/http_pool.h"
-#include "agentc/log.h"
-#include "agentc/platform.h"
+#include "arc/http_pool.h"
+#include "arc/log.h"
+#include "arc/platform.h"
 #include "http_client.h"
 
 #include <pthread.h>
@@ -32,7 +32,7 @@
  *============================================================================*/
 
 typedef struct pool_entry {
-    agentc_http_client_t *client;  /**< HTTP client handle */
+    arc_http_client_t *client;  /**< HTTP client handle */
     uint64_t last_used_ms;         /**< Last use timestamp (for idle timeout) */
     int in_use;                    /**< Currently borrowed */
     struct pool_entry *next;       /**< Next in linked list */
@@ -93,20 +93,20 @@ static void timespec_from_timeout(struct timespec *ts, uint32_t timeout_ms) {
  *============================================================================*/
 
 static pool_entry_t *entry_create(void) {
-    pool_entry_t *entry = AGENTC_CALLOC(1, sizeof(pool_entry_t));
+    pool_entry_t *entry = ARC_CALLOC(1, sizeof(pool_entry_t));
     if (!entry) {
         return NULL;
     }
 
     /* Create HTTP client with default config */
-    agentc_http_client_config_t http_cfg = {
+    arc_http_client_config_t http_cfg = {
         .default_timeout_ms = s_pool.config.default_request_timeout_ms,
     };
 
-    agentc_err_t err = agentc_http_client_create(&http_cfg, &entry->client);
-    if (err != AGENTC_OK || !entry->client) {
+    arc_err_t err = arc_http_client_create(&http_cfg, &entry->client);
+    if (err != ARC_OK || !entry->client) {
         AC_LOG_ERROR("HTTP pool: failed to create client: %s", ac_strerror(err));
-        AGENTC_FREE(entry);
+        ARC_FREE(entry);
         return NULL;
     }
 
@@ -121,9 +121,9 @@ static void entry_destroy(pool_entry_t *entry) {
     if (!entry) return;
 
     if (entry->client) {
-        agentc_http_client_destroy(entry->client);
+        arc_http_client_destroy(entry->client);
     }
-    AGENTC_FREE(entry);
+    ARC_FREE(entry);
 }
 
 /**
@@ -141,7 +141,7 @@ static pool_entry_t *find_idle_entry(void) {
 /**
  * @brief Find entry by client pointer
  */
-static pool_entry_t *find_entry_by_client(agentc_http_client_t *client) {
+static pool_entry_t *find_entry_by_client(arc_http_client_t *client) {
     for (pool_entry_t *e = s_pool.entries; e; e = e->next) {
         if (e->client == client) {
             return e;
@@ -181,7 +181,7 @@ static void cleanup_idle_connections(void) {
  * Public API: Lifecycle
  *============================================================================*/
 
-agentc_err_t ac_http_pool_init(const ac_http_pool_config_t *config) {
+arc_err_t ac_http_pool_init(const ac_http_pool_config_t *config) {
     /* Thread-safe initialization check */
     static pthread_mutex_t init_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -190,7 +190,7 @@ agentc_err_t ac_http_pool_init(const ac_http_pool_config_t *config) {
     if (s_pool.initialized) {
         pthread_mutex_unlock(&init_mutex);
         AC_LOG_DEBUG("HTTP pool: already initialized");
-        return AGENTC_OK;
+        return ARC_OK;
     }
 
     memset(&s_pool, 0, sizeof(s_pool));
@@ -217,13 +217,13 @@ agentc_err_t ac_http_pool_init(const ac_http_pool_config_t *config) {
     /* Initialize synchronization primitives */
     if (pthread_mutex_init(&s_pool.mutex, NULL) != 0) {
         pthread_mutex_unlock(&init_mutex);
-        return AGENTC_ERR_BACKEND;
+        return ARC_ERR_BACKEND;
     }
 
     if (pthread_cond_init(&s_pool.available, NULL) != 0) {
         pthread_mutex_destroy(&s_pool.mutex);
         pthread_mutex_unlock(&init_mutex);
-        return AGENTC_ERR_BACKEND;
+        return ARC_ERR_BACKEND;
     }
 
     s_pool.initialized = 1;
@@ -236,7 +236,7 @@ agentc_err_t ac_http_pool_init(const ac_http_pool_config_t *config) {
                 s_pool.config.idle_timeout_ms,
                 s_pool.config.acquire_timeout_ms);
 
-    return AGENTC_OK;
+    return ARC_OK;
 }
 
 int ac_http_pool_is_initialized(void) {
@@ -302,7 +302,7 @@ void ac_http_pool_shutdown(void) {
  * Public API: Acquire/Release
  *============================================================================*/
 
-agentc_http_client_t *ac_http_pool_acquire(uint32_t timeout_ms) {
+arc_http_client_t *ac_http_pool_acquire(uint32_t timeout_ms) {
     if (!s_pool.initialized || s_pool.shutting_down) {
         AC_LOG_ERROR("HTTP pool: not initialized or shutting down");
         return NULL;
@@ -400,7 +400,7 @@ agentc_http_client_t *ac_http_pool_acquire(uint32_t timeout_ms) {
     return NULL;
 }
 
-void ac_http_pool_release(agentc_http_client_t *client) {
+void ac_http_pool_release(arc_http_client_t *client) {
     if (!client) {
         return;
     }
@@ -408,7 +408,7 @@ void ac_http_pool_release(agentc_http_client_t *client) {
     if (!s_pool.initialized) {
         /* Pool was shutdown, destroy the orphaned client */
         AC_LOG_WARN("HTTP pool: releasing client after shutdown");
-        agentc_http_client_destroy(client);
+        arc_http_client_destroy(client);
         return;
     }
 
@@ -444,14 +444,14 @@ void ac_http_pool_release(agentc_http_client_t *client) {
  * Public API: Statistics
  *============================================================================*/
 
-agentc_err_t ac_http_pool_get_stats(ac_http_pool_stats_t *stats) {
+arc_err_t ac_http_pool_get_stats(ac_http_pool_stats_t *stats) {
     if (!stats) {
-        return AGENTC_ERR_INVALID_ARG;
+        return ARC_ERR_INVALID_ARG;
     }
 
     if (!s_pool.initialized) {
         memset(stats, 0, sizeof(*stats));
-        return AGENTC_ERR_NOT_INITIALIZED;
+        return ARC_ERR_NOT_INITIALIZED;
     }
 
     pthread_mutex_lock(&s_pool.mutex);
@@ -468,5 +468,5 @@ agentc_err_t ac_http_pool_get_stats(ac_http_pool_stats_t *stats) {
 
     pthread_mutex_unlock(&s_pool.mutex);
 
-    return AGENTC_OK;
+    return ARC_OK;
 }

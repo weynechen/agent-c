@@ -3,7 +3,7 @@
  * @brief Agent hooks implementation
  */
 
-#include "agentc/agent_hooks.h"
+#include "arc/agent_hooks.h"
 #include <string.h>
 
 /*============================================================================

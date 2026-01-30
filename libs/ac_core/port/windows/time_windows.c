@@ -3,7 +3,7 @@
  * @brief Windows platform time implementation
  */
 
-#include "agentc/platform.h"
+#include "arc/platform.h"
 
 #ifdef _WIN32
 #include <windows.h>

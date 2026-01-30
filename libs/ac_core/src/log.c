@@ -1,15 +1,15 @@
 /**
  * @file log.c
  * @brief Core logging implementation
- * 
+ *
  * This file implements the logging API defined in log.h.
  * Platform-specific output is delegated to the port layer.
- * 
+ *
  * Thread Safety:
  * - All log output is protected by a mutex to prevent interleaved output
  */
 
-#include "agentc/log.h"
+#include "arc/log.h"
 #include "pthread_port.h"
 #include <stdio.h>
 #include <stdarg.h>

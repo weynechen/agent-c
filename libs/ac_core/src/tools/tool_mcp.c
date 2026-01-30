@@ -5,9 +5,9 @@
  * Bridges MCP tools to the unified tool registry.
  */
 
-#include "agentc/tool.h"
-#include "agentc/mcp.h"
-#include "agentc/log.h"
+#include "arc/tool.h"
+#include "arc/mcp.h"
+#include "arc/log.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -36,27 +36,27 @@ static char *mcp_tool_execute(
     void *priv
 ) {
     (void)ctx;  /* MCP doesn't use local context */
-    
+
     mcp_wrapper_data_t *data = (mcp_wrapper_data_t *)priv;
     if (!data || !data->client || !data->tool_name) {
         return strdup("{\"error\":\"Invalid MCP tool data\"}");
     }
-    
+
     char *result = NULL;
-    agentc_err_t err = ac_mcp_call_tool(
+    arc_err_t err = ac_mcp_call_tool(
         data->client,
         data->tool_name,
         args_json ? args_json : "{}",
         &result
     );
-    
-    if (err != AGENTC_OK) {
+
+    if (err != ARC_OK) {
         AC_LOG_ERROR("MCP tool call failed: %s (err=%d)", data->tool_name, err);
         if (!result) {
             result = strdup("{\"error\":\"MCP tool call failed\"}");
         }
     }
-    
+
     return result;
 }
 
@@ -67,42 +67,42 @@ static char *mcp_tool_execute(
 /* Forward declaration - get arena from registry */
 extern arena_t *ac_tool_registry_get_arena(const ac_tool_registry_t *registry);
 
-agentc_err_t ac_tool_registry_add_mcp(
+arc_err_t ac_tool_registry_add_mcp(
     ac_tool_registry_t *registry,
     ac_mcp_client_t *client
 ) {
     if (!registry || !client) {
-        return AGENTC_ERR_INVALID_ARG;
+        return ARC_ERR_INVALID_ARG;
     }
-    
+
     size_t tool_count = ac_mcp_tool_count(client);
     if (tool_count == 0) {
         AC_LOG_WARN("No MCP tools to add");
-        return AGENTC_OK;
+        return ARC_OK;
     }
-    
+
     arena_t *arena = ac_tool_registry_get_arena(registry);
     if (!arena) {
         AC_LOG_ERROR("Failed to get registry arena");
-        return AGENTC_ERR_INVALID_ARG;
+        return ARC_ERR_INVALID_ARG;
     }
-    
+
     AC_LOG_INFO("Adding %zu MCP tools to registry", tool_count);
-    
+
     for (size_t i = 0; i < tool_count; i++) {
         const char *name = NULL;
         const char *description = NULL;
         const char *parameters = NULL;
-        
-        agentc_err_t err = ac_mcp_get_tool_info(
+
+        arc_err_t err = ac_mcp_get_tool_info(
             client, i, &name, &description, &parameters
         );
-        
-        if (err != AGENTC_OK || !name) {
+
+        if (err != ARC_OK || !name) {
             AC_LOG_WARN("Failed to get MCP tool info at index %zu", i);
             continue;
         }
-        
+
         /* Create wrapper data */
         mcp_wrapper_data_t *wrapper_data = (mcp_wrapper_data_t *)arena_alloc(
             arena, sizeof(mcp_wrapper_data_t)
@@ -111,15 +111,15 @@ agentc_err_t ac_tool_registry_add_mcp(
             AC_LOG_ERROR("Failed to allocate MCP wrapper data");
             continue;
         }
-        
+
         wrapper_data->client = client;
         wrapper_data->tool_name = arena_strdup(arena, name);
-        
+
         if (!wrapper_data->tool_name) {
             AC_LOG_ERROR("Failed to copy MCP tool name");
             continue;
         }
-        
+
         /* Create tool definition */
         ac_tool_t tool = {
             .name = name,
@@ -128,13 +128,13 @@ agentc_err_t ac_tool_registry_add_mcp(
             .execute = mcp_tool_execute,
             .priv = wrapper_data
         };
-        
+
         err = ac_tool_registry_add(registry, &tool);
-        if (err != AGENTC_OK) {
+        if (err != ARC_OK) {
             AC_LOG_WARN("Failed to add MCP tool: %s", name);
         }
     }
-    
+
     AC_LOG_INFO("MCP tools added to registry");
-    return AGENTC_OK;
+    return ARC_OK;
 }

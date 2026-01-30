@@ -1,6 +1,6 @@
 /**
  * @file hello.c
- * @brief Minimal AgentC example
+ * @brief Minimal ArC example
  *
  * Usage:
  *   1. Create .env file with OPENAI_API_KEY=sk-xxx
@@ -9,12 +9,12 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <agentc.h>
+#include <arc.h>
 #include "dotenv.h"
 
 int main(void) {
     env_load(".", false);
-    
+
     const char *api_key = getenv("OPENAI_API_KEY");
     const char *model = getenv_default("OPENAI_MODEL", "gpt-3.5-turbo");
     const char *base_url = getenv_default("OPENAI_BASE_URL", NULL);
@@ -23,13 +23,13 @@ int main(void) {
         AC_LOG_ERROR("OPENAI_API_KEY not set");
         return 1;
     }
-    
+
     ac_session_t *session = ac_session_open();
     if (!session) {
         AC_LOG_ERROR("Failed to open session");
         return 1;
     }
-    
+
     ac_agent_t *agent = ac_agent_create(session, &(ac_agent_params_t){
         .name = "HelloBot",
         .instructions = "You are a friendly assistant.",
@@ -42,27 +42,27 @@ int main(void) {
         .tools = NULL,
         .max_iterations = 10
     });
-    
+
     if (!agent) {
         AC_LOG_ERROR("Failed to create agent");
         ac_session_close(session);
         return 1;
     }
-    
+
     const char *user_prompt = "Write a haiku about recursion in programming.";
     ac_agent_result_t *result = ac_agent_run(agent, user_prompt);
-    
+
     printf("----------------------\n");
-    printf("[user]:\n%s\n\n", user_prompt); 
+    printf("[user]:\n%s\n\n", user_prompt);
     if (result && result->content) {
         printf("[assistant]:\n%s\n", result->content);
     } else {
         printf("No response from agent\n");
     }
-    
+
     printf("----------------------\n");
 
     ac_session_close(session);
-    
+
     return 0;
 }

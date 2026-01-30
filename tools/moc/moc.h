@@ -1,6 +1,6 @@
 /**
  * @file moc.h
- * @brief Meta-Object Compiler for AgentC Tool Generation
+ * @brief Meta-Object Compiler for ArC Tool Generation
  *
  * MOC parses C header files with AC_TOOL_META markers and Doxygen-style
  * comments, generating wrapper functions and tool registration code.

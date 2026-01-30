@@ -5,8 +5,8 @@
  * Platform-independent helper functions for sandbox implementations.
  */
 
-#include <agentc/sandbox.h>
-#include <agentc/log.h>
+#include <arc/sandbox.h>
+#include <arc/log.h>
 #include "sandbox_internal.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -44,7 +44,7 @@ void ac_sandbox_set_error(
 ) {
     g_last_error.code = code;
     g_last_error.platform_errno = platform_errno;
-    
+
     /* Copy strings to thread-local buffers */
     if (message) {
         strncpy(g_error_message, message, sizeof(g_error_message) - 1);
@@ -53,7 +53,7 @@ void ac_sandbox_set_error(
     } else {
         g_last_error.message = NULL;
     }
-    
+
     if (ai_explanation) {
         strncpy(g_error_explanation, ai_explanation, sizeof(g_error_explanation) - 1);
         g_error_explanation[sizeof(g_error_explanation) - 1] = '\0';
@@ -61,7 +61,7 @@ void ac_sandbox_set_error(
     } else {
         g_last_error.ai_explanation = NULL;
     }
-    
+
     if (suggestion) {
         strncpy(g_error_suggestion, suggestion, sizeof(g_error_suggestion) - 1);
         g_error_suggestion[sizeof(g_error_suggestion) - 1] = '\0';
@@ -69,7 +69,7 @@ void ac_sandbox_set_error(
     } else {
         g_last_error.suggestion = NULL;
     }
-    
+
     if (blocked_resource) {
         strncpy(g_blocked_resource, blocked_resource, sizeof(g_blocked_resource) - 1);
         g_blocked_resource[sizeof(g_blocked_resource) - 1] = '\0';
@@ -102,7 +102,7 @@ size_t ac_sandbox_format_error_for_ai(
     if (!error || !buffer || size == 0) {
         return 0;
     }
-    
+
     int written = snprintf(buffer, size,
         "Sandbox Error:\n"
         "  Code: %d\n"
@@ -116,7 +116,7 @@ size_t ac_sandbox_format_error_for_ai(
         error->suggestion ? error->suggestion : "No suggestion available",
         error->blocked_resource ? error->blocked_resource : "N/A"
     );
-    
+
     return (written > 0 && (size_t)written < size) ? (size_t)written : size - 1;
 }
 
@@ -153,7 +153,7 @@ int ac_sandbox_normalize_path(const char *path, char *buffer, size_t size) {
     if (!path || !buffer || size == 0) {
         return -1;
     }
-    
+
 #if defined(_WIN32)
     /* Windows: use _fullpath */
     if (_fullpath(buffer, path, size) == NULL) {
@@ -174,7 +174,7 @@ int ac_sandbox_normalize_path(const char *path, char *buffer, size_t size) {
         return -1;
     }
 #endif
-    
+
     return 0;
 }
 
@@ -189,35 +189,35 @@ int ac_sandbox_path_is_under(const char *parent, const char *child) {
     if (!parent || !child) {
         return 0;
     }
-    
+
     char norm_parent[4096];
     char norm_child[4096];
-    
+
     if (ac_sandbox_normalize_path(parent, norm_parent, sizeof(norm_parent)) < 0) {
         return 0;
     }
     if (ac_sandbox_normalize_path(child, norm_child, sizeof(norm_child)) < 0) {
         return 0;
     }
-    
+
     size_t parent_len = strlen(norm_parent);
-    
+
     /* Remove trailing slash from parent if present */
     if (parent_len > 0 && norm_parent[parent_len - 1] == '/') {
         norm_parent[parent_len - 1] = '\0';
         parent_len--;
     }
-    
+
     /* Check if child starts with parent path */
     if (strncmp(norm_parent, norm_child, parent_len) != 0) {
         return 0;
     }
-    
+
     /* Child must either equal parent or have a separator after parent */
     if (norm_child[parent_len] == '\0' || norm_child[parent_len] == '/') {
         return 1;
     }
-    
+
     return 0;
 }
 
@@ -236,36 +236,36 @@ static const char *g_dangerous_patterns[] = {
     "> /dev/nv",
     "dd if=",
     "mkfs",
-    
+
     /* Privilege escalation */
     "sudo ",
     "su -",
     "su root",
     "doas ",
-    
+
     /* Permission changes */
     "chmod 777 /",
     "chmod -R 777 /",
     "chown -R",
-    
+
     /* System modifications */
     "systemctl ",
     "service ",
     "/etc/init.d/",
-    
+
     /* Network exfiltration */
     "curl ",
     "wget ",
     "nc -",
     "netcat ",
-    
+
     /* Shell fork bomb */
     ":(){ :|:& };:",
-    
+
     /* Dangerous redirections */
     "> /etc/",
     ">> /etc/",
-    
+
     NULL
 };
 
@@ -280,14 +280,14 @@ int ac_sandbox_is_command_dangerous(const char *command) {
     if (!command) {
         return 0;
     }
-    
+
     /* Check safe overrides first */
     for (int i = 0; g_safe_overrides[i] != NULL; i++) {
         if (strstr(command, g_safe_overrides[i]) != NULL) {
             return 0;
         }
     }
-    
+
     /* Check dangerous patterns */
     for (int i = 0; g_dangerous_patterns[i] != NULL; i++) {
         if (strstr(command, g_dangerous_patterns[i]) != NULL) {
@@ -295,7 +295,7 @@ int ac_sandbox_is_command_dangerous(const char *command) {
             return 1;
         }
     }
-    
+
     return 0;
 }
 
@@ -312,7 +312,7 @@ static const char *g_default_readonly_paths[] = {
     "/usr/bin",
     "/usr/sbin",
     "/usr/local/bin",
-    
+
     /* Libraries */
     "/lib",
     "/lib64",
@@ -321,30 +321,30 @@ static const char *g_default_readonly_paths[] = {
     "/usr/lib64",
     "/usr/lib32",
     "/usr/local/lib",
-    
+
     /* Shared data */
     "/usr/share",
     "/usr/local/share",
-    
+
     /* Dynamic linker config */
     "/etc/ld.so.cache",
     "/etc/ld.so.conf",
     "/etc/ld.so.conf.d",
-    
+
     /* Timezone and locale */
     "/etc/localtime",
     "/etc/timezone",
     "/etc/locale.gen",
     "/etc/locale.conf",
-    
+
     /* SSL certificates */
     "/etc/ssl/certs",
     "/etc/ca-certificates",
     "/etc/pki",
-    
+
     /* Proc filesystem (for self info) */
     "/proc/self",
-    
+
     /* Device files */
     "/dev/null",
     "/dev/zero",
@@ -352,7 +352,7 @@ static const char *g_default_readonly_paths[] = {
     "/dev/random",
     "/dev/tty",
     "/dev/pts",
-    
+
     /* Tmp for temporary files */
     "/tmp",
     "/var/tmp",
@@ -395,18 +395,18 @@ ac_sandbox_confirm_result_t ac_sandbox_request_confirm(
     if (!sandbox || !request) {
         return AC_SANDBOX_DENY;
     }
-    
+
     /* If no callback is set, deny by default */
     if (!sandbox->confirm_callback) {
-        AC_LOG_WARN("Sandbox: no confirm callback, auto-deny: %s", 
+        AC_LOG_WARN("Sandbox: no confirm callback, auto-deny: %s",
                     request->resource ? request->resource : "(null)");
         return AC_SANDBOX_DENY;
     }
-    
+
     /* Call the user-provided callback */
     ac_sandbox_confirm_result_t result = sandbox->confirm_callback(
         request, sandbox->confirm_user_data);
-    
+
     /* Handle session-level permissions */
     if (result == AC_SANDBOX_ALLOW_SESSION) {
         switch (request->type) {
@@ -424,7 +424,7 @@ ac_sandbox_confirm_result_t ac_sandbox_request_confirm(
                 break;
         }
     }
-    
+
     return result;
 }
 

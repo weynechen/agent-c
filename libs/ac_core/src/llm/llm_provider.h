@@ -1,18 +1,18 @@
 /**
  * @file llm_provider.h
  * @brief Internal LLM provider interface
- * 
+ *
  * This header defines the provider interface used internally by llm.c
  * to route requests to different LLM backends.
- * 
+ *
  * Design: Each provider manages its own private data (similar to Linux driver model).
  */
 
-#ifndef AGENTC_LLM_PROVIDER_H
-#define AGENTC_LLM_PROVIDER_H
+#ifndef ARC_LLM_PROVIDER_H
+#define ARC_LLM_PROVIDER_H
 
-#include "agentc/llm.h"
-#include "agentc/message.h"
+#include "arc/llm.h"
+#include "arc/message.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -20,47 +20,47 @@ extern "C" {
 
 /**
  * @brief Provider operations
- * 
+ *
  * Each provider implements these functions to manage its own resources
  * and handle LLM-specific request/response processing.
  */
 typedef struct ac_llm_ops {
     const char* name;  /**< Provider name (for logging) */
-    
+
     /**
      * @brief Create provider private data
-     * 
+     *
      * Called during ac_llm_create() to allocate and initialize
      * provider-specific resources (e.g., HTTP client).
-     * 
+     *
      * @param params LLM parameters
      * @return Provider private data, or NULL on error
      */
     void* (*create)(const ac_llm_params_t* params);
-    
+
     /**
      * @brief Perform chat completion with optional tool support
-     * 
+     *
      * @param priv Provider private data (returned by create)
      * @param params LLM parameters
      * @param messages Message history (linked list)
      * @param tools JSON array of tool definitions (NULL if no tools)
      * @param response Structured response output
-     * @return AGENTC_OK on success
+     * @return ARC_OK on success
      */
-    agentc_err_t (*chat)(
+    arc_err_t (*chat)(
         void* priv,
         const ac_llm_params_t* params,
         const ac_message_t* messages,
         const char* tools,
         ac_chat_response_t* response
     );
-    
+
     /**
      * @brief Cleanup provider private data
-     * 
+     *
      * Called during arena destruction to free provider-specific resources.
-     * 
+     *
      * @param priv Provider private data (returned by create)
      */
     void (*cleanup)(void* priv);
@@ -68,9 +68,9 @@ typedef struct ac_llm_ops {
 
 /**
  * @brief Register a provider (called by provider modules)
- * 
+ *
  * Providers use AC_PROVIDER_REGISTER macro to auto-register at startup.
- * 
+ *
  * @param name Provider name (e.g., "openai", "anthropic")
  * @param ops Provider operations
  */
@@ -78,7 +78,7 @@ void ac_llm_register_provider(const char *name, const ac_llm_ops_t *ops);
 
 /**
  * @brief Find provider by name
- * 
+ *
  * @param name Provider name
  * @return Provider operations, or NULL if not found
  */
@@ -86,12 +86,12 @@ const ac_llm_ops_t* ac_llm_find_provider_by_name(const char *name);
 
 /**
  * @brief Find the appropriate provider for given parameters
- * 
+ *
  * Selection logic:
  * 1. If params->provider is set, use it directly
  * 2. If params->compatible is set, use that provider
  * 3. Otherwise, auto-detect based on model/api_base
- * 
+ *
  * @param params LLM parameters
  * @return Provider operations, or NULL if none found
  */
@@ -99,7 +99,7 @@ const ac_llm_ops_t* ac_llm_find_provider(const ac_llm_params_t* params);
 
 /**
  * @brief Auto-registration macro (constructor pattern)
- * 
+ *
  * Usage in provider file:
  * @code
  * static const ac_llm_ops_t openai_ops = { ... };
@@ -129,4 +129,4 @@ const ac_llm_ops_t* ac_llm_find_provider(const ac_llm_params_t* params);
 }
 #endif
 
-#endif /* AGENTC_LLM_PROVIDER_H */
+#endif /* ARC_LLM_PROVIDER_H */

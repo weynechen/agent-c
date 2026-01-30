@@ -1,4 +1,4 @@
-# AgentC Examples
+# ArC Examples
 
 cmake_minimum_required(VERSION 3.14)
 
@@ -9,12 +9,12 @@ set(CJSON_INCLUDE ${CMAKE_SOURCE_DIR}/external/cjson)
 add_executable(hello hosted/hello.c)
 target_link_libraries(hello PRIVATE
     ac_core::ac_core
-    agentc_dotenv
+    arc_dotenv
 )
 target_include_directories(hello PRIVATE
     ${CJSON_INCLUDE}
 )
-if(AGENTC_USE_CURL)
+if(ARC_USE_CURL)
   target_link_libraries(hello PRIVATE CURL::libcurl)
 endif()
 
@@ -22,16 +22,16 @@ endif()
 add_executable(chat_demo hosted/chat_demo.c)
 target_link_libraries(chat_demo PRIVATE
     ac_core::ac_core
-    agentc_markdown
-    agentc_dotenv
-    agentc_platform_wrap
+    arc_markdown
+    arc_dotenv
+    arc_platform_wrap
 )
 target_include_directories(chat_demo PRIVATE
     ${CJSON_INCLUDE}
     ${CMAKE_SOURCE_DIR}/libs/ac_hosted/src
     ${CMAKE_SOURCE_DIR}/external/args/include
 )
-if(AGENTC_USE_CURL)
+if(ARC_USE_CURL)
   target_link_libraries(chat_demo PRIVATE CURL::libcurl)
 endif()
 
@@ -51,7 +51,7 @@ add_custom_command(
 
 add_custom_target(chat_tools_gen DEPENDS ${DEMO_TOOLS_GEN_H} ${DEMO_TOOLS_GEN_C})
 
-add_executable(chat_tools 
+add_executable(chat_tools
     hosted/chat_tools.c
     hosted/demo_tools.c
     ${DEMO_TOOLS_GEN_C}
@@ -60,8 +60,8 @@ add_dependencies(chat_tools chat_tools_gen)
 
 target_link_libraries(chat_tools PRIVATE
     ac_core::ac_core
-    agentc_dotenv
-    agentc_platform_wrap
+    arc_dotenv
+    arc_platform_wrap
 )
 target_include_directories(chat_tools PRIVATE
     ${CJSON_INCLUDE}
@@ -72,12 +72,12 @@ target_include_directories(chat_tools PRIVATE
 if(NOT WIN32)
   target_link_libraries(chat_tools PRIVATE m)
 endif()
-if(AGENTC_USE_CURL)
+if(ARC_USE_CURL)
   target_link_libraries(chat_tools PRIVATE CURL::libcurl)
 endif()
 
 # Example 3: MCP Integration demo
-add_executable(chat_mcp 
+add_executable(chat_mcp
     hosted/chat_mcp.c
     hosted/demo_tools.c
     ${DEMO_TOOLS_GEN_C}
@@ -86,8 +86,8 @@ add_dependencies(chat_mcp chat_tools_gen)
 
 target_link_libraries(chat_mcp PRIVATE
     ac_core::ac_core
-    agentc_dotenv
-    agentc_platform_wrap
+    arc_dotenv
+    arc_platform_wrap
 )
 target_include_directories(chat_mcp PRIVATE
     ${CJSON_INCLUDE}
@@ -98,7 +98,7 @@ target_include_directories(chat_mcp PRIVATE
 if(NOT WIN32)
   target_link_libraries(chat_mcp PRIVATE m)
 endif()
-if(AGENTC_USE_CURL)
+if(ARC_USE_CURL)
   target_link_libraries(chat_mcp PRIVATE CURL::libcurl)
 endif()
 
@@ -106,14 +106,14 @@ endif()
 add_executable(chat_markdown hosted/chat_markdown.c)
 target_link_libraries(chat_markdown PRIVATE
     ac_core::ac_core
-    agentc_markdown
+    arc_markdown
 )
 target_include_directories(chat_markdown PRIVATE
     ${CMAKE_SOURCE_DIR}/libs/ac_hosted/src
 )
 
 # Example 6: Trace demo - Agent observability
-add_executable(chat_trace 
+add_executable(chat_trace
     hosted/chat_trace.c
     hosted/demo_tools.c
     ${DEMO_TOOLS_GEN_C}
@@ -123,8 +123,8 @@ add_dependencies(chat_trace chat_tools_gen)
 target_link_libraries(chat_trace PRIVATE
     ac_core::ac_core
     ac_hosted::ac_hosted
-    agentc_dotenv
-    agentc_platform_wrap
+    arc_dotenv
+    arc_platform_wrap
 )
 target_include_directories(chat_trace PRIVATE
     ${CJSON_INCLUDE}
@@ -136,7 +136,7 @@ target_include_directories(chat_trace PRIVATE
 if(NOT WIN32)
   target_link_libraries(chat_trace PRIVATE m)
 endif()
-if(AGENTC_USE_CURL)
+if(ARC_USE_CURL)
   target_link_libraries(chat_trace PRIVATE CURL::libcurl)
 endif()
 
@@ -146,7 +146,7 @@ add_executable(chat_multi_agent hosted/chat_multi_agent.c)
 target_link_libraries(chat_multi_agent PRIVATE
     ac_core::ac_core
     ac_hosted::ac_hosted
-    agentc_dotenv
+    arc_dotenv
 )
 target_include_directories(chat_multi_agent PRIVATE
     ${CJSON_INCLUDE}
@@ -155,7 +155,7 @@ target_include_directories(chat_multi_agent PRIVATE
 if(UNIX)
   target_link_libraries(chat_multi_agent PRIVATE pthread)
 endif()
-if(AGENTC_USE_CURL)
+if(ARC_USE_CURL)
   target_link_libraries(chat_multi_agent PRIVATE CURL::libcurl)
 endif()
 
@@ -164,15 +164,15 @@ add_executable(chat_skills hosted/chat_skills.c)
 target_link_libraries(chat_skills PRIVATE
     ac_core::ac_core
     ac_hosted::ac_hosted
-    agentc_dotenv
-    agentc_platform_wrap
+    arc_dotenv
+    arc_platform_wrap
 )
 target_include_directories(chat_skills PRIVATE
     ${CJSON_INCLUDE}
     ${CMAKE_SOURCE_DIR}/libs/ac_hosted/include
     ${CMAKE_SOURCE_DIR}/external/args/include
 )
-if(AGENTC_USE_CURL)
+if(ARC_USE_CURL)
   target_link_libraries(chat_skills PRIVATE CURL::libcurl)
 endif()
 
@@ -201,11 +201,11 @@ add_custom_command(TARGET chat_skills POST_BUILD
 # if(PkgConfig_FOUND)
 #   pkg_check_modules(NOTCURSES notcurses)
 # endif()
-# 
+#
 # if(NOTCURSES_FOUND)
 #   add_executable(chat_tui hosted/chat_tui.c)
 #   ...
 # endif()
 message(STATUS "chat_tui: Temporarily disabled (needs API rewrite)")
 
-message(STATUS "AgentC Examples: hello, chat_demo, chat_tools, chat_mcp, chat_markdown, chat_trace, chat_multi_agent, chat_skills")
+message(STATUS "ArC Examples: hello, chat_demo, chat_tools, chat_mcp, chat_markdown, chat_trace, chat_multi_agent, chat_skills")

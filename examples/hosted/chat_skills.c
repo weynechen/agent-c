@@ -2,7 +2,7 @@
  * @file chat_skills.c
  * @brief Skills system demo - Agent loads skills via tool
  *
- * This demo demonstrates the AgentC Skills system with skill tool.
+ * This demo demonstrates the ArC Skills system with skill tool.
  * The Agent can dynamically load skills by calling the 'skill' tool.
  *
  * Features demonstrated:
@@ -21,8 +21,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
-#include <agentc.h>
-#include <agentc/skills.h>
+#include <arc.h>
+#include <arc/skills.h>
 #include "dotenv.h"
 #include "platform_wrap.h"
 
@@ -51,14 +51,14 @@ static void print_usage(void) {
 
 static void print_skills_list(const ac_skills_t *skills) {
     printf("\n=== Discovered Skills ===\n");
-    
+
     size_t count = ac_skills_count(skills);
     if (count == 0) {
         printf("No skills discovered.\n");
         printf("Make sure the 'skills/' directory exists with skill subdirectories.\n\n");
         return;
     }
-    
+
     const ac_skill_t *skill = ac_skills_list(skills);
     while (skill) {
         const char *state_str;
@@ -73,13 +73,13 @@ static void print_skills_list(const ac_skills_t *skills) {
                 state_str = "[available]";
                 break;
         }
-        
+
         printf("  %s %s\n", state_str, skill->meta.name);
         printf("    %s\n", skill->meta.description);
-        
+
         skill = skill->next;
     }
-    
+
     printf("\nTotal: %zu skills (Agent can load via 'skill' tool)\n\n", count);
 }
 
@@ -91,34 +91,34 @@ static void print_skills_list(const ac_skills_t *skills) {
  * - Use skill tool to load full instructions
  */
 static char *build_system_prompt(ac_skills_t *skills) {
-    const char *base_prompt = 
+    const char *base_prompt =
         "You are a helpful coding assistant.\n\n"
         "You have access to specialized skills that provide detailed instructions "
         "for specific tasks. When a user's request matches an available skill, "
         "use the 'skill' tool to load the full instructions before proceeding.\n\n";
-    
+
     /* Build available_skills XML for system prompt */
     char *skills_xml = ac_skills_build_discovery_prompt(skills);
-    
+
     if (!skills_xml) {
         return strdup(base_prompt);
     }
-    
+
     /* Combine base prompt + skills list */
     size_t base_len = strlen(base_prompt);
     size_t skills_len = strlen(skills_xml);
     size_t total = base_len + skills_len + 1;
-    
+
     char *prompt = malloc(total);
     if (!prompt) {
         free(skills_xml);
         return NULL;
     }
-    
+
     memcpy(prompt, base_prompt, base_len);
     memcpy(prompt + base_len, skills_xml, skills_len);
     prompt[total - 1] = '\0';
-    
+
     free(skills_xml);
     return prompt;
 }
@@ -139,25 +139,25 @@ static ac_agent_t *create_agent(
         AC_LOG_ERROR("Failed to create tool registry");
         return NULL;
     }
-    
+
     /* Create and register skill tool */
     g_skill_tool = ac_skills_create_tool(skills);
     if (!g_skill_tool) {
         AC_LOG_ERROR("Failed to create skill tool");
         return NULL;
     }
-    
+
     ac_tool_registry_add(tools, g_skill_tool);
-    
+
     /* Build system prompt with available skills (per agentskills.io spec) */
     char *system_prompt = build_system_prompt(skills);
     if (!system_prompt) {
         AC_LOG_ERROR("Failed to build system prompt");
         return NULL;
     }
-    
+
     AC_LOG_DEBUG("System prompt:\n%s", system_prompt);
-    
+
     ac_agent_t *agent = ac_agent_create(session, &(ac_agent_params_t){
         .name = "SkillsBot",
         .instructions = system_prompt,
@@ -170,7 +170,7 @@ static ac_agent_t *create_agent(
         .tools = tools,
         .max_iterations = 10
     });
-    
+
     free(system_prompt);
     return agent;
 }
@@ -178,17 +178,17 @@ static ac_agent_t *create_agent(
 int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
-    
+
     /* Initialize platform-specific terminal settings */
     platform_init_terminal(NULL);
-    
+
     /* Load environment from .env file */
     if (env_load(".", false) == 0) {
         printf("[Loaded .env file]\n");
     } else {
         printf("[No .env file found, using environment variables]\n");
     }
-    
+
     /* Get API key from environment */
     const char *api_key = getenv("OPENAI_API_KEY");
     if (!api_key || strlen(api_key) == 0) {
@@ -197,17 +197,17 @@ int main(int argc, char *argv[]) {
         platform_cleanup_terminal();
         return 1;
     }
-    
+
     /* Optional: custom base URL and model */
     const char *base_url = getenv("OPENAI_BASE_URL");
     const char *model = getenv("OPENAI_MODEL");
     if (!model) {
         model = "gpt-4o-mini";  /* Need a model that supports tool calling */
     }
-    
+
     /* Setup signal handler */
     signal(SIGINT, signal_handler);
-    
+
     /* Create skills manager and discover skills */
     ac_skills_t *skills = ac_skills_create();
     if (!skills) {
@@ -215,17 +215,17 @@ int main(int argc, char *argv[]) {
         platform_cleanup_terminal();
         return 1;
     }
-    
+
     /* Discover skills from directory */
     ac_skills_discover_dir(skills, SKILLS_DIR);
-    
-    printf("\n=== AgentC Skills Demo (Tool Mode) ===\n");
+
+    printf("\n=== ArC Skills Demo (Tool Mode) ===\n");
     printf("Model: %s\n", model);
     printf("Endpoint: %s\n", base_url ? base_url : "https://api.openai.com/v1");
     printf("Skills discovered: %zu\n", ac_skills_count(skills));
     printf("Agent has 'skill' tool to load skills on demand.\n");
     printf("Type /help for commands, /skills to list available skills\n\n");
-    
+
     /* Open session */
     ac_session_t *session = ac_session_open();
     if (!session) {
@@ -234,7 +234,7 @@ int main(int argc, char *argv[]) {
         platform_cleanup_terminal();
         return 1;
     }
-    
+
     /* Create agent with skill tool */
     ac_agent_t *agent = create_agent(session, skills, model, api_key, base_url);
     if (!agent) {
@@ -244,28 +244,28 @@ int main(int argc, char *argv[]) {
         platform_cleanup_terminal();
         return 1;
     }
-    
+
     char input[MAX_INPUT_LEN];
-    
+
     while (g_running) {
         printf("You: ");
         fflush(stdout);
-        
+
         if (!fgets(input, sizeof(input), stdin)) {
             break;
         }
-        
+
         /* Remove trailing newline */
         size_t len = strlen(input);
         if (len > 0 && input[len - 1] == '\n') {
             input[--len] = '\0';
         }
-        
+
         /* Skip empty input */
         if (len == 0) {
             continue;
         }
-        
+
         /* Handle commands */
         if (input[0] == '/') {
             if (strcmp(input, "/quit") == 0 || strcmp(input, "/exit") == 0) {
@@ -302,22 +302,22 @@ int main(int argc, char *argv[]) {
                 continue;
             }
         }
-        
+
         printf("Assistant: ");
         fflush(stdout);
-        
+
         /* Run agent - it will use skill tool if needed */
         ac_agent_result_t *result = ac_agent_run(agent, input);
-        
+
         if (result && result->content) {
             printf("%s\n", result->content);
         } else {
             printf("[No response from agent]\n");
         }
-        
+
         printf("\n");
     }
-    
+
     /* Cleanup */
     if (g_skill_tool) {
         ac_skills_destroy_tool(g_skill_tool);
@@ -325,7 +325,7 @@ int main(int argc, char *argv[]) {
     ac_session_close(session);
     ac_skills_destroy(skills);
     platform_cleanup_terminal();
-    
+
     printf("Goodbye!\n");
     return 0;
 }

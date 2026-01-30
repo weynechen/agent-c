@@ -4,7 +4,7 @@
  */
 
 #include "llm_provider.h"
-#include "agentc/log.h"
+#include "arc/log.h"
 #include <string.h>
 
 /*============================================================================
@@ -36,7 +36,7 @@ extern const ac_llm_ops_t anthropic_ops;
 
 /**
  * @brief Initialize built-in providers
- * 
+ *
  * This is called lazily on first use to ensure built-in providers
  * are registered even in static library builds where constructors
  * may not execute automatically.
@@ -45,13 +45,13 @@ static void ac_llm_init_builtin_providers(void) {
     if (s_providers_initialized) {
         return;
     }
-    
+
     /* Register built-in providers manually */
     /* Note: AC_PROVIDER_REGISTER macro uses constructor attribute which may not
      * work reliably in static library builds, so we manually register here */
     ac_llm_register_provider("openai", &openai_ops);
     ac_llm_register_provider("anthropic", &anthropic_ops);
-    
+
     s_providers_initialized = 1;
     AC_LOG_DEBUG("Built-in providers initialized (openai, anthropic)");
 }
@@ -65,12 +65,12 @@ void ac_llm_register_provider(const char *name, const ac_llm_ops_t *ops) {
         AC_LOG_ERROR("Invalid provider registration: name or ops is NULL");
         return;
     }
-    
+
     if (s_provider_count >= MAX_PROVIDERS) {
         AC_LOG_ERROR("Provider registry full, cannot register: %s", name);
         return;
     }
-    
+
     // Check for duplicates
     for (int i = 0; i < s_provider_count; i++) {
         if (strcmp(s_providers[i].name, name) == 0) {
@@ -78,11 +78,11 @@ void ac_llm_register_provider(const char *name, const ac_llm_ops_t *ops) {
             return;
         }
     }
-    
+
     s_providers[s_provider_count].name = name;
     s_providers[s_provider_count].ops = ops;
     s_provider_count++;
-    
+
     AC_LOG_DEBUG("Provider registered: %s", name);
 }
 
@@ -94,13 +94,13 @@ const ac_llm_ops_t* ac_llm_find_provider_by_name(const char *name) {
     if (!name) {
         return NULL;
     }
-    
+
     for (int i = 0; i < s_provider_count; i++) {
         if (strcmp(s_providers[i].name, name) == 0) {
             return s_providers[i].ops;
         }
     }
-    
+
     return NULL;
 }
 
@@ -108,7 +108,7 @@ const ac_llm_ops_t* ac_llm_find_provider(const ac_llm_params_t* params) {
     if (!params) {
         return NULL;
     }
-    
+
     /* Ensure built-in providers are registered */
     /* TODO: need fix this , provide a reliab way to regiser providers*/
     ac_llm_init_builtin_providers();
@@ -116,7 +116,7 @@ const ac_llm_ops_t* ac_llm_find_provider(const ac_llm_params_t* params) {
     if (params->provider == NULL) {
         AC_LOG_ERROR("Please set llm provider");
     }
-     
+
     /* Strategy 1: Use compatible mode (e.g., "openai" for OpenAI-compatible APIs) */
     if (params->compatible && params->compatible[0] != '\0') {
         const ac_llm_ops_t* ops = ac_llm_find_provider_by_name(params->compatible);
@@ -135,7 +135,7 @@ const ac_llm_ops_t* ac_llm_find_provider(const ac_llm_params_t* params) {
         }
         AC_LOG_WARN("Provider '%s' not found", params->provider);
     }
-       
+
     /* No provider found */
     AC_LOG_ERROR("No suitable provider found for provider=%s", params->provider);
     return NULL;
