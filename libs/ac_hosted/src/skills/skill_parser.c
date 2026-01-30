@@ -19,10 +19,16 @@
 #include "skills_internal.h"
 #include <agentc/log.h>
 #include <ctype.h>
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+
+/* Windows compatibility: S_ISREG may not be defined in sys/stat.h */
+#ifndef S_ISREG
+#define S_ISREG(mode) (((mode) & S_IFMT) == S_IFREG)
+#endif
 
 /*============================================================================
  * Helper Functions

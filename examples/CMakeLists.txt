@@ -159,7 +159,42 @@ if(AGENTC_USE_CURL)
   target_link_libraries(chat_multi_agent PRIVATE CURL::libcurl)
 endif()
 
-# Example 8: TUI chat demo with Notcurses (WeChat-style interface)
+# Example 8: Skills system demo
+add_executable(chat_skills hosted/chat_skills.c)
+target_link_libraries(chat_skills PRIVATE
+    ac_core::ac_core
+    ac_hosted::ac_hosted
+    agentc_dotenv
+    agentc_platform_wrap
+)
+target_include_directories(chat_skills PRIVATE
+    ${CJSON_INCLUDE}
+    ${CMAKE_SOURCE_DIR}/libs/ac_hosted/include
+    ${CMAKE_SOURCE_DIR}/external/args/include
+)
+if(AGENTC_USE_CURL)
+  target_link_libraries(chat_skills PRIVATE CURL::libcurl)
+endif()
+
+# Test: Skills system unit test (no LLM required)
+add_executable(test_skills hosted/test_skills.c)
+target_link_libraries(test_skills PRIVATE
+    ac_core::ac_core
+    ac_hosted::ac_hosted
+)
+target_include_directories(test_skills PRIVATE
+    ${CMAKE_SOURCE_DIR}/libs/ac_hosted/include
+)
+
+# Copy skills directory to build output for easy testing
+add_custom_command(TARGET chat_skills POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_CURRENT_SOURCE_DIR}/hosted/skills
+    ${CMAKE_CURRENT_BINARY_DIR}/skills
+    COMMENT "Copying example skills to build directory"
+)
+
+# Example 9: TUI chat demo with Notcurses (WeChat-style interface)
 # NOTE: chat_tui needs to be rewritten to use the new Session/Agent API
 # Temporarily disabled until rewrite is complete
 # find_package(PkgConfig QUIET)
@@ -173,4 +208,4 @@ endif()
 # endif()
 message(STATUS "chat_tui: Temporarily disabled (needs API rewrite)")
 
-message(STATUS "AgentC Examples: hello, chat_demo, chat_tools, chat_mcp, chat_markdown, chat_trace, chat_multi_agent")
+message(STATUS "AgentC Examples: hello, chat_demo, chat_tools, chat_mcp, chat_markdown, chat_trace, chat_multi_agent, chat_skills")
