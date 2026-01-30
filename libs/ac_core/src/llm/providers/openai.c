@@ -20,11 +20,28 @@
 #include <string.h>
 #include <stdio.h>
 
+/*============================================================================
+ * HTTP Pool Integration (weak symbols for optional linking)
+ *============================================================================*/
+
+/* Weak declarations - resolved at link time if ac_hosted is linked */
+__attribute__((weak)) int ac_http_pool_is_initialized(void);
+__attribute__((weak)) agentc_http_client_t *ac_http_pool_acquire(uint32_t timeout_ms);
+__attribute__((weak)) void ac_http_pool_release(agentc_http_client_t *client);
+
+/**
+ * @brief Check if HTTP pool is available and initialized
+ */
+static int http_pool_available(void) {
+    return ac_http_pool_is_initialized && ac_http_pool_is_initialized();
+}
+
 /**
  * @brief OpenAI provider private data
  */
 typedef struct {
-    agentc_http_client_t *http;
+    agentc_http_client_t *http;  /**< Owned HTTP client (NULL if using pool) */
+    int owns_http;               /**< 1 if we created the client, 0 if from pool */
 } openai_priv_t;
 
 /**
@@ -40,18 +57,27 @@ static void* openai_create(const ac_llm_params_t* params) {
         return NULL;
     }
     
-    /* Create HTTP client */
-    agentc_http_client_config_t config = {
-        .default_timeout_ms = params->timeout_ms,
-    };
-    
-    agentc_err_t err = agentc_http_client_create(&config, &priv->http);
-    if (err != AGENTC_OK) {
-        AGENTC_FREE(priv);
-        return NULL;
+    /* Check if HTTP pool is available */
+    if (http_pool_available()) {
+        /* Will acquire from pool on each request */
+        priv->http = NULL;
+        priv->owns_http = 0;
+        AC_LOG_DEBUG("OpenAI provider initialized (using HTTP pool)");
+    } else {
+        /* Create own HTTP client */
+        agentc_http_client_config_t config = {
+            .default_timeout_ms = params->timeout_ms,
+        };
+        
+        agentc_err_t err = agentc_http_client_create(&config, &priv->http);
+        if (err != AGENTC_OK) {
+            AGENTC_FREE(priv);
+            return NULL;
+        }
+        priv->owns_http = 1;
+        AC_LOG_DEBUG("OpenAI provider initialized (using own HTTP client)");
     }
     
-    AC_LOG_DEBUG("OpenAI provider initialized");
     return priv;
 }
 
@@ -70,7 +96,23 @@ static agentc_err_t openai_chat(
     }
     
     openai_priv_t* priv = (openai_priv_t*)priv_data;
-    agentc_http_client_t* http = priv->http;
+    agentc_http_client_t* http = NULL;
+    int from_pool = 0;
+    
+    /* Get HTTP client: from pool or owned */
+    if (priv->owns_http) {
+        http = priv->http;
+    } else if (http_pool_available()) {
+        http = ac_http_pool_acquire(params->timeout_ms > 0 ? params->timeout_ms : 30000);
+        if (!http) {
+            AC_LOG_ERROR("OpenAI: failed to acquire HTTP client from pool");
+            return AGENTC_ERR_TIMEOUT;
+        }
+        from_pool = 1;
+    } else {
+        AC_LOG_ERROR("OpenAI: no HTTP client available");
+        return AGENTC_ERR_NOT_INITIALIZED;
+    }
     
     /* Build URL */
     char url[512];
@@ -137,6 +179,7 @@ static agentc_err_t openai_chat(
     cJSON_Delete(root);
     
     if (!body) {
+        if (from_pool) ac_http_pool_release(http);
         return AGENTC_ERR_NO_MEMORY;
     }
     
@@ -172,6 +215,7 @@ static agentc_err_t openai_chat(
     
     if (err != AGENTC_OK) {
         agentc_http_response_free(&http_resp);
+        if (from_pool) ac_http_pool_release(http);
         return err;
     }
     
@@ -179,6 +223,7 @@ static agentc_err_t openai_chat(
         AC_LOG_ERROR("OpenAI HTTP %d: %s", http_resp.status_code,
             http_resp.body ? http_resp.body : "");
         agentc_http_response_free(&http_resp);
+        if (from_pool) ac_http_pool_release(http);
         return AGENTC_ERR_HTTP;
     }
     
@@ -187,6 +232,10 @@ static agentc_err_t openai_chat(
     err = ac_chat_response_parse(http_resp.body, response);
     
     agentc_http_response_free(&http_resp);
+    
+    /* Release HTTP client back to pool */
+    if (from_pool) ac_http_pool_release(http);
+    
     return err;
 }
 
@@ -199,7 +248,12 @@ static void openai_cleanup(void* priv_data) {
     }
     
     openai_priv_t* priv = (openai_priv_t*)priv_data;
-    agentc_http_client_destroy(priv->http);
+    
+    /* Only destroy HTTP client if we own it (not from pool) */
+    if (priv->owns_http && priv->http) {
+        agentc_http_client_destroy(priv->http);
+    }
+    
     AGENTC_FREE(priv);
     
     AC_LOG_DEBUG("OpenAI provider cleaned up");

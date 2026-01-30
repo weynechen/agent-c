@@ -19,11 +19,28 @@
 #define ANTHROPIC_API_VERSION "2023-06-01"
 
 /*============================================================================
+ * HTTP Pool Integration (weak symbols for optional linking)
+ *============================================================================*/
+
+/* Weak declarations - resolved at link time if ac_hosted is linked */
+__attribute__((weak)) int ac_http_pool_is_initialized(void);
+__attribute__((weak)) agentc_http_client_t *ac_http_pool_acquire(uint32_t timeout_ms);
+__attribute__((weak)) void ac_http_pool_release(agentc_http_client_t *client);
+
+/**
+ * @brief Check if HTTP pool is available and initialized
+ */
+static int http_pool_available(void) {
+    return ac_http_pool_is_initialized && ac_http_pool_is_initialized();
+}
+
+/*============================================================================
  * Anthropic Provider Private Data
  *============================================================================*/
 
 typedef struct {
-    agentc_http_client_t *http;
+    agentc_http_client_t *http;  /**< Owned HTTP client (NULL if using pool) */
+    int owns_http;               /**< 1 if we created the client, 0 if from pool */
 } anthropic_priv_t;
 
 /*============================================================================
@@ -40,18 +57,27 @@ static void* anthropic_create(const ac_llm_params_t* params) {
         return NULL;
     }
     
-    /* Create HTTP client */
-    agentc_http_client_config_t config = {
-        .default_timeout_ms = 60000,  // Default 60s timeout
-    };
-    
-    agentc_err_t err = agentc_http_client_create(&config, &priv->http);
-    if (err != AGENTC_OK) {
-        AGENTC_FREE(priv);
-        return NULL;
+    /* Check if HTTP pool is available */
+    if (http_pool_available()) {
+        /* Will acquire from pool on each request */
+        priv->http = NULL;
+        priv->owns_http = 0;
+        AC_LOG_DEBUG("Anthropic provider initialized (using HTTP pool)");
+    } else {
+        /* Create own HTTP client */
+        agentc_http_client_config_t config = {
+            .default_timeout_ms = 60000,  /* Default 60s timeout */
+        };
+        
+        agentc_err_t err = agentc_http_client_create(&config, &priv->http);
+        if (err != AGENTC_OK) {
+            AGENTC_FREE(priv);
+            return NULL;
+        }
+        priv->owns_http = 1;
+        AC_LOG_DEBUG("Anthropic provider initialized (using own HTTP client)");
     }
     
-    AC_LOG_DEBUG("Anthropic provider initialized");
     return priv;
 }
 
@@ -69,6 +95,23 @@ static agentc_err_t anthropic_chat(
     (void)tools;  /* TODO: Implement Anthropic tool calling */
     
     anthropic_priv_t* priv = (anthropic_priv_t*)priv_data;
+    agentc_http_client_t* http = NULL;
+    int from_pool = 0;
+    
+    /* Get HTTP client: from pool or owned */
+    if (priv->owns_http) {
+        http = priv->http;
+    } else if (http_pool_available()) {
+        http = ac_http_pool_acquire(params->timeout_ms > 0 ? params->timeout_ms : 60000);
+        if (!http) {
+            AC_LOG_ERROR("Anthropic: failed to acquire HTTP client from pool");
+            return AGENTC_ERR_TIMEOUT;
+        }
+        from_pool = 1;
+    } else {
+        AC_LOG_ERROR("Anthropic: no HTTP client available");
+        return AGENTC_ERR_NOT_INITIALIZED;
+    }
     
     /* Build URL */
     const char* api_base = params->api_base ? params->api_base : "https://api.anthropic.com";
@@ -110,6 +153,7 @@ static agentc_err_t anthropic_chat(
     cJSON_Delete(root);
     
     if (!body) {
+        if (from_pool) ac_http_pool_release(http);
         return AGENTC_ERR_NO_MEMORY;
     }
     
@@ -136,7 +180,7 @@ static agentc_err_t anthropic_chat(
     };
     
     agentc_http_response_t http_resp = {0};
-    agentc_err_t err = agentc_http_request(priv->http, &req, &http_resp);
+    agentc_err_t err = agentc_http_request(http, &req, &http_resp);
     
     /* Cleanup */
     agentc_http_header_free(headers);
@@ -145,6 +189,7 @@ static agentc_err_t anthropic_chat(
     if (err != AGENTC_OK) {
         AC_LOG_ERROR("Anthropic HTTP request failed: %d", err);
         agentc_http_response_free(&http_resp);
+        if (from_pool) ac_http_pool_release(http);
         return err;
     }
     
@@ -152,6 +197,7 @@ static agentc_err_t anthropic_chat(
         AC_LOG_ERROR("Anthropic HTTP %d: %s", http_resp.status_code,
             http_resp.body ? http_resp.body : "");
         agentc_http_response_free(&http_resp);
+        if (from_pool) ac_http_pool_release(http);
         return AGENTC_ERR_HTTP;
     }
     
@@ -162,6 +208,7 @@ static agentc_err_t anthropic_chat(
     if (!resp_root) {
         AC_LOG_ERROR("Failed to parse Anthropic response JSON");
         agentc_http_response_free(&http_resp);
+        if (from_pool) ac_http_pool_release(http);
         return AGENTC_ERR_HTTP;
     }
     
@@ -174,6 +221,7 @@ static agentc_err_t anthropic_chat(
         AC_LOG_ERROR("No content in Anthropic response");
         cJSON_Delete(resp_root);
         agentc_http_response_free(&http_resp);
+        if (from_pool) ac_http_pool_release(http);
         return AGENTC_ERR_HTTP;
     }
     
@@ -208,6 +256,9 @@ static agentc_err_t anthropic_chat(
     cJSON_Delete(resp_root);
     agentc_http_response_free(&http_resp);
     
+    /* Release HTTP client back to pool */
+    if (from_pool) ac_http_pool_release(http);
+    
     AC_LOG_DEBUG("Anthropic chat completed");
     return AGENTC_OK;
 }
@@ -218,7 +269,12 @@ static void anthropic_cleanup(void* priv_data) {
     }
     
     anthropic_priv_t* priv = (anthropic_priv_t*)priv_data;
-    agentc_http_client_destroy(priv->http);
+    
+    /* Only destroy HTTP client if we own it (not from pool) */
+    if (priv->owns_http && priv->http) {
+        agentc_http_client_destroy(priv->http);
+    }
+    
     AGENTC_FREE(priv);
     
     AC_LOG_DEBUG("Anthropic provider cleaned up");
