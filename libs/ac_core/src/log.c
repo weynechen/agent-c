@@ -4,9 +4,13 @@
  * 
  * This file implements the logging API defined in log.h.
  * Platform-specific output is delegated to the port layer.
+ * 
+ * Thread Safety:
+ * - All log output is protected by a mutex to prevent interleaved output
  */
 
 #include "agentc/log.h"
+#include "pthread_port.h"
 #include <stdio.h>
 #include <stdarg.h>
 
@@ -15,6 +19,9 @@ static ac_log_level_t g_log_level = AC_LOG_LEVEL_INFO;
 
 /* Custom log handler (NULL = use default platform handler) */
 static ac_log_handler_t g_log_handler = NULL;
+
+/* Mutex for thread-safe log output */
+static pthread_mutex_t g_log_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* Forward declaration of platform-specific default handler */
 void ac_log_platform_default_handler(
@@ -39,7 +46,7 @@ void ac_log_set_handler(ac_log_handler_t handler) {
 }
 
 /**
- * @brief Internal log function
+ * @brief Internal log function (thread-safe)
  */
 static void ac_log_internal(
     ac_log_level_t level,
@@ -49,10 +56,13 @@ static void ac_log_internal(
     const char* fmt,
     va_list args
 ) {
-    // Filter by log level
+    // Filter by log level (check before locking for performance)
     if (level > g_log_level) {
         return;
     }
+
+    // Lock to prevent interleaved output from multiple threads
+    pthread_mutex_lock(&g_log_mutex);
 
     // Use custom handler if set, otherwise use platform default
     if (g_log_handler) {
@@ -60,6 +70,8 @@ static void ac_log_internal(
     } else {
         ac_log_platform_default_handler(level, file, line, func, fmt, args);
     }
+
+    pthread_mutex_unlock(&g_log_mutex);
 }
 
 void ac_log_error(const char* file, int line, const char* func, const char* fmt, ...) {
