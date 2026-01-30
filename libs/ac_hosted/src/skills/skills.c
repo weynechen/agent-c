@@ -13,6 +13,11 @@
 #include <string.h>
 #include <sys/stat.h>
 
+/* Windows compatibility: S_ISDIR may not be defined in sys/stat.h */
+#ifndef S_ISDIR
+#define S_ISDIR(mode) (((mode) & S_IFMT) == S_IFDIR)
+#endif
+
 /*============================================================================
  * Constants
  *============================================================================*/
