@@ -329,6 +329,7 @@ int main(int argc, char *argv[]) {
     
     /* Main loop */
     char input[MAX_INPUT_LEN];
+    int round = 0;
     
     while (1) {
         printf("Word> ");
@@ -347,16 +348,40 @@ int main(int argc, char *argv[]) {
         if (len == 0) continue;
         if (strcmp(input, "quit") == 0 || strcmp(input, "exit") == 0) break;
         
+        round++;
         printf("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        printf("  Analyzing: \"%s\"\n", input);
+        printf("  Analyzing: \"%s\" (round %d)\n", input, round);
         printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n");
+        
+        /*
+         * IMPORTANT: Recreate expert agents each round to prevent memory growth.
+         * Expert agents are stateless - they don't need conversation history.
+         * Destroying and recreating releases their arena memory.
+         */
+        if (round > 1) {
+            /* Destroy previous expert agents to free memory */
+            for (int i = 0; i < NUM_EXPERTS; i++) {
+                if (experts[i]) {
+                    ac_agent_destroy(experts[i]);
+                    experts[i] = NULL;
+                }
+            }
+            
+            /* Recreate expert agents */
+            for (int i = 0; i < NUM_EXPERTS; i++) {
+                experts[i] = create_expert_agent(session, &EXPERTS[i], model, api_key, base_url);
+                if (!experts[i]) {
+                    fprintf(stderr, "[!] Failed to recreate expert: %s\n", EXPERTS[i].name);
+                }
+            }
+        }
         
         /* Prepare worker tasks */
         pthread_t threads[NUM_EXPERTS];
         worker_task_t tasks[NUM_EXPERTS];
         
         char prompt[512];
-        snprintf(prompt, sizeof(prompt), "Please analyze this word: %s", input);
+        snprintf(prompt, sizeof(prompt), "请分析这个词：%s", input);
         
         uint64_t parallel_start = ac_platform_timestamp_ms();
         
@@ -413,6 +438,16 @@ int main(int argc, char *argv[]) {
         if (success_count > 0) {
             printf("[Phase 4] Generating comprehensive summary...\n\n");
             
+            /* Recreate summary agent each round to free memory */
+            if (round > 1) {
+                ac_agent_destroy(summary_agent);
+                summary_agent = create_summary_agent(session, model, api_key, base_url);
+                if (!summary_agent) {
+                    fprintf(stderr, "[!] Failed to recreate summary agent\n");
+                    continue;
+                }
+            }
+            
             size_t summary_prompt_size = total_summary_len + 1024;
             char *summary_prompt = malloc(summary_prompt_size);
             if (!summary_prompt) {
@@ -421,19 +456,19 @@ int main(int argc, char *argv[]) {
             }
             
             snprintf(summary_prompt, summary_prompt_size,
-                     "The user wants to learn about the word \"%s\". Here are the analyses from domain experts:\n\n", input);
+                     "用户想要了解「%s」这个词。以下是各领域专家的分析：\n\n", input);
             
             for (int i = 0; i < NUM_EXPERTS; i++) {
                 if (tasks[i].success) {
                     char section[MAX_OUTPUT_LEN + 128];
                     snprintf(section, sizeof(section), 
-                             "## %s Expert\n%s\n\n", EXPERTS[i].domain, tasks[i].output);
+                             "## %s专家\n%s\n\n", EXPERTS[i].domain, tasks[i].output);
                     strncat(summary_prompt, section, summary_prompt_size - strlen(summary_prompt) - 1);
                 }
             }
             
             strncat(summary_prompt, 
-                    "\nPlease synthesize the above analyses from all domains and provide a comprehensive and insightful summary.",
+                    "\n请综合以上各领域的分析，给出一个全面而有深度的总结。",
                     summary_prompt_size - strlen(summary_prompt) - 1);
             
             uint64_t summary_start = ac_platform_timestamp_ms();
@@ -443,7 +478,7 @@ int main(int argc, char *argv[]) {
             uint64_t summary_end = ac_platform_timestamp_ms();
             
             printf("╔══════════════════════════════════════════════════════════════╗\n");
-            printf("║              COMPREHENSIVE SUMMARY                           ║\n");
+            printf("║                      综合总结                                ║\n");
             printf("╚══════════════════════════════════════════════════════════════╝\n\n");
             
             if (result && result->content) {

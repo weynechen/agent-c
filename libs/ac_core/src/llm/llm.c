@@ -45,6 +45,12 @@ ac_llm_t* ac_llm_create(arena_t* arena, const ac_llm_params_t* params) {
     llm->params.api_base = params->api_base ? arena_strdup(arena, params->api_base) : NULL;
     llm->params.instructions = params->instructions ? arena_strdup(arena, params->instructions) : NULL;
     
+    // Copy numeric params (IMPORTANT: must explicitly copy, not inherited from stack)
+    llm->params.temperature = params->temperature;
+    llm->params.top_p = params->top_p;
+    llm->params.max_tokens = params->max_tokens;
+    llm->params.timeout_ms = params->timeout_ms;
+    
     if (!llm->params.model || !llm->params.api_key) {
         AC_LOG_ERROR("Failed to copy strings to arena");
         return NULL;
