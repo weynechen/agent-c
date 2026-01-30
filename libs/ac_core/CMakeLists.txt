@@ -22,26 +22,25 @@ set(AGENTC_CORE_SOURCES
     src/log.c
     src/trace.c
     port/http_client.c
+    port/http_curl.c
 )
 
-# Platform-specific port layer (log, time, HTTP backend)
+# Platform-specific port layer (log, time)
 if(AGENTC_PORT STREQUAL "posix")
     list(APPEND AGENTC_CORE_SOURCES 
         port/posix/log_posix.c
         port/posix/time_posix.c
-        port/posix/http/http_curl.c
     )
 elseif(AGENTC_PORT STREQUAL "windows")
     list(APPEND AGENTC_CORE_SOURCES 
         port/windows/log_windows.c
         port/windows/time_windows.c
-        port/windows/http/http_curl.c  # Or http_winhttp.c
     )
 elseif(AGENTC_PORT STREQUAL "freertos")
     list(APPEND AGENTC_CORE_SOURCES 
         port/freertos/log_freertos.c
         port/freertos/time_freertos.c
-        port/freertos/http/http_lwip.c  # Or custom implementation
+        port/freertos/http/http_lwip.c  # Custom HTTP implementation for FreeRTOS
     )
 endif()
 

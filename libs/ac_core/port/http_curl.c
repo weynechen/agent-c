@@ -1,13 +1,13 @@
 /**
  * @file http_curl.c
- * @brief libcurl HTTP backend for POSIX platforms (Linux/macOS)
+ * @brief libcurl HTTP backend (cross-platform)
  *
  * This is the hosted platform implementation using libcurl.
  * Implements the interface defined in port/http_client.h.
  */
 
 #include "agentc/platform.h"
-#include "../../http_client.h"
+#include "http_client.h"
 #include "agentc/log.h"
 #include <curl/curl.h>
 #include <stddef.h>
@@ -104,7 +104,7 @@ static agentc_err_t curl_global_init_once(void) {
             AC_LOG_ERROR("curl_global_init failed: %s", curl_easy_strerror(res));
             return AGENTC_ERR_BACKEND;
         }
-        AC_LOG_DEBUG("CURL backend initialized (POSIX)");
+        AC_LOG_DEBUG("CURL backend initialized");
     }
     s_curl_refcount++;
     AC_LOG_DEBUG("CURL refcount: %d", s_curl_refcount);
