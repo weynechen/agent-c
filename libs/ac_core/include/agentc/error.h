@@ -34,6 +34,7 @@ typedef enum {
     AGENTC_ERR_NOT_CONNECTED = -13,     /* Not connected */
     AGENTC_ERR_PROTOCOL = -14,          /* Protocol error */
     AGENTC_ERR_PARSE = -15,             /* Parse error */
+    AGENTC_ERR_RESPONSE_TOO_LARGE = -16, /* Response size exceeds limit */
 } agentc_err_t;
 
 /*============================================================================

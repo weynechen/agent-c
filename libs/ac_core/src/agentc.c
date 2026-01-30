@@ -35,6 +35,7 @@ const char *ac_strerror(agentc_err_t err) {
         case AGENTC_ERR_NOT_CONNECTED:   return "Not connected";
         case AGENTC_ERR_PROTOCOL:        return "Protocol error";
         case AGENTC_ERR_PARSE:           return "Parse error";
+        case AGENTC_ERR_RESPONSE_TOO_LARGE: return "Response size exceeds limit";
         default:                         return "Unknown error";
     }
 }

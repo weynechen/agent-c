@@ -120,23 +120,6 @@ typedef struct {
  *============================================================================*/
 
 /**
- * @brief Initialize the HTTP client subsystem
- *
- * Must be called once before any other HTTP functions.
- * Thread-safe: No (call from main thread only)
- *
- * @return AGENTC_OK on success, error code otherwise
- */
-agentc_err_t agentc_http_init(void);
-
-/**
- * @brief Cleanup the HTTP client subsystem
- *
- * Call before program exit.
- */
-void agentc_http_cleanup(void);
-
-/**
  * @brief Create an HTTP client instance
  *
  * @param config  Client configuration (NULL for defaults)

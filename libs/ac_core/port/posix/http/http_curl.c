@@ -10,7 +10,9 @@
 #include "../../http_client.h"
 #include "agentc/log.h"
 #include <curl/curl.h>
+#include <stddef.h>
 #include <string.h>
+#include <pthread.h>
 
 /*============================================================================
  * Internal Structures
@@ -25,6 +27,8 @@ typedef struct {
     char *data;
     size_t size;
     size_t cap;
+    size_t max_response_size;  /* 0 = unlimited */
+    int size_exceeded;         /* Set to 1 if response size limit exceeded */
 } write_buffer_t;
 
 typedef struct {
@@ -40,7 +44,15 @@ typedef struct {
 static size_t write_callback(void *contents, size_t size, size_t nmemb, void *userp) {
     size_t realsize = size * nmemb;
     write_buffer_t *buf = (write_buffer_t *)userp;
-    
+
+    /* Check response size limit */
+    if (buf->max_response_size > 0 && buf->size + realsize > buf->max_response_size) {
+        AC_LOG_ERROR("Response size exceeds limit: %zu > %zu",
+            buf->size + realsize, buf->max_response_size);
+        buf->size_exceeded = 1;
+        return 0;  /* Abort transfer */
+    }
+
     /* Grow buffer if needed */
     if (buf->size + realsize + 1 > buf->cap) {
         size_t new_cap = buf->cap * 2;
@@ -81,18 +93,11 @@ static size_t stream_callback(void *contents, size_t size, size_t nmemb, void *u
     return realsize;
 }
 
-/*============================================================================
- * Global Init/Cleanup with Reference Counting
- * 
- * curl_global_init() must be called once per process (not thread-safe).
- * We use reference counting to automatically manage this:
- * - First HTTP client creation -> curl_global_init()
- * - Last HTTP client destruction -> curl_global_cleanup()
- *============================================================================*/
-
 static int s_curl_refcount = 0;
+static pthread_mutex_t s_curl_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static agentc_err_t curl_global_init_once(void) {
+    pthread_mutex_lock(&s_curl_mutex);
     if (s_curl_refcount == 0) {
         CURLcode res = curl_global_init(CURL_GLOBAL_DEFAULT);
         if (res != CURLE_OK) {
@@ -103,10 +108,12 @@ static agentc_err_t curl_global_init_once(void) {
     }
     s_curl_refcount++;
     AC_LOG_DEBUG("CURL refcount: %d", s_curl_refcount);
+    pthread_mutex_unlock(&s_curl_mutex);
     return AGENTC_OK;
 }
 
 static void curl_global_cleanup_once(void) {
+    pthread_mutex_lock(&s_curl_mutex);
     if (s_curl_refcount > 0) {
         s_curl_refcount--;
         AC_LOG_DEBUG("CURL refcount: %d", s_curl_refcount);
@@ -115,16 +122,9 @@ static void curl_global_cleanup_once(void) {
             AC_LOG_DEBUG("CURL backend cleaned up");
         }
     }
+    pthread_mutex_unlock(&s_curl_mutex);
 }
 
-/* Deprecated: Kept for backward compatibility, but no longer required */
-agentc_err_t agentc_http_init(void) {
-    return curl_global_init_once();
-}
-
-void agentc_http_cleanup(void) {
-    curl_global_cleanup_once();
-}
 
 /*============================================================================
  * Client Create/Destroy
@@ -210,6 +210,7 @@ agentc_err_t agentc_http_request(
     buf.data = AGENTC_MALLOC(4096);
     buf.cap = 4096;
     buf.size = 0;
+    buf.max_response_size = client->config.max_response_size;
     if (!buf.data) {
         return AGENTC_ERR_NO_MEMORY;
     }
@@ -250,11 +251,21 @@ agentc_err_t agentc_http_request(
     
     /* Set headers */
     struct curl_slist *headers = NULL;
+
     for (const agentc_http_header_t *h = request->headers; h; h = h->next) {
-        char header_line[1024];
-        snprintf(header_line, sizeof(header_line), "%s: %s", h->name, h->value);
+        size_t len = strlen(h->name) + strlen(h->value) + 3; /* +3 for ": " and \0 */
+        len = ((len / 1024 + 1) *1024); //keep 1024 align
+
+        char *header_line = AGENTC_MALLOC(len);
+        if (!header_line) {
+            curl_slist_free_all(headers);
+            return AGENTC_ERR_NO_MEMORY;
+        }
+        snprintf(header_line, len, "%s: %s", h->name, h->value);
         headers = curl_slist_append(headers, header_line);
-    }
+        AGENTC_FREE(header_line); 
+    }  
+
     if (headers) {
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     }
@@ -296,8 +307,15 @@ agentc_err_t agentc_http_request(
         const char *err_msg = curl_easy_strerror(res);
         AC_LOG_ERROR("CURL request failed: %s", err_msg);
         
-        response->error_msg = AGENTC_STRDUP(err_msg);
         AGENTC_FREE(buf.data);
+        
+        /* Check if aborted due to response size limit */
+        if (buf.size_exceeded) {
+            response->error_msg = AGENTC_STRDUP("Response size exceeds limit");
+            return AGENTC_ERR_RESPONSE_TOO_LARGE;
+        }
+        
+        response->error_msg = AGENTC_STRDUP(err_msg);
         
         if (res == CURLE_OPERATION_TIMEDOUT) {
             return AGENTC_ERR_TIMEOUT;
