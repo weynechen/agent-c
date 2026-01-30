@@ -88,6 +88,55 @@
 #endif
 
 /*============================================================================
+ * Memory Configuration
+ *
+ * Platform-specific memory limits. Override with -DAGENTC_xxx=value
+ *
+ * Embedded platforms use smaller defaults to conserve RAM.
+ * Desktop platforms use larger defaults for better performance.
+ *============================================================================*/
+
+#if defined(AGENTC_PLATFORM_EMBEDDED)
+
+    /* Embedded platform defaults (conserve memory) */
+    #ifndef AGENTC_SESSION_ARENA_SIZE
+        #define AGENTC_SESSION_ARENA_SIZE       (256 * 1024)    /* 256KB */
+    #endif
+    #ifndef AGENTC_AGENT_ARENA_SIZE
+        #define AGENTC_AGENT_ARENA_SIZE         (128 * 1024)    /* 128KB */
+    #endif
+    #ifndef AGENTC_ARRAY_INITIAL_CAPACITY
+        #define AGENTC_ARRAY_INITIAL_CAPACITY   4               /* Small initial */
+    #endif
+    #ifndef AGENTC_ARENA_MIN_BLOCK_SIZE
+        #define AGENTC_ARENA_MIN_BLOCK_SIZE     (4 * 1024)      /* 4KB */
+    #endif
+    #ifndef AGENTC_ARENA_GROWTH_FACTOR
+        #define AGENTC_ARENA_GROWTH_FACTOR      2
+    #endif
+
+#else /* Desktop platforms (Linux/Windows/macOS) */
+
+    /* Desktop platform defaults (optimize for performance) */
+    #ifndef AGENTC_SESSION_ARENA_SIZE
+        #define AGENTC_SESSION_ARENA_SIZE       (4 * 1024 * 1024)   /* 4MB */
+    #endif
+    #ifndef AGENTC_AGENT_ARENA_SIZE
+        #define AGENTC_AGENT_ARENA_SIZE         (1024 * 1024)       /* 1MB */
+    #endif
+    #ifndef AGENTC_ARRAY_INITIAL_CAPACITY
+        #define AGENTC_ARRAY_INITIAL_CAPACITY   16
+    #endif
+    #ifndef AGENTC_ARENA_MIN_BLOCK_SIZE
+        #define AGENTC_ARENA_MIN_BLOCK_SIZE     (4 * 1024)          /* 4KB */
+    #endif
+    #ifndef AGENTC_ARENA_GROWTH_FACTOR
+        #define AGENTC_ARENA_GROWTH_FACTOR      2
+    #endif
+
+#endif /* Platform selection */
+
+/*============================================================================
  * Memory Allocation
  *
  * Allow custom allocators for embedded systems

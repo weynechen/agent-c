@@ -15,7 +15,8 @@
 #include <string.h>
 #include <stdio.h>
 
-#define DEFAULT_ARENA_SIZE (1024 * 1024)  /* 1MB per agent */
+/* Use platform-specific default from platform.h */
+#define DEFAULT_ARENA_SIZE AGENTC_AGENT_ARENA_SIZE
 
 /*============================================================================
  * Forward Declarations

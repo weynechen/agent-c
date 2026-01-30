@@ -1,3 +1,55 @@
+## 已完成的修改
+
+### P0-1: Session 动态数组 + 线程安全 (已完成)
+
+**修改文件：**
+- `libs/ac_core/src/session.c` - 重写，使用动态数组替代固定大小数组
+- `libs/ac_core/port/pthread_port.h` - 新增，跨平台pthread兼容层
+- `libs/ac_core/include/agentc/error.h` - 新增 `AGENTC_ERR_INVALID_STATE`
+- `libs/ac_core/src/agentc.c` - 更新 `ac_strerror()`
+
+**主要改进：**
+1. 移除 `MAX_AGENTS=32` 硬编码限制，改为动态增长数组
+2. 添加 `pthread_mutex_t` 保护所有session操作
+3. 支持任意数量的agent/registry/mcp_client
+4. 添加 `closed` 标志防止重复关闭
+
+### P0-2: Arena 链式扩容 (已完成)
+
+**修改文件：**
+- `libs/ac_core/include/agentc/arena.h` - 新增 `arena_stats_t` 和 `arena_get_stats()`
+- `libs/ac_core/src/arena.c` - 重写，实现链式block扩容
+
+**主要改进：**
+1. Arena满时自动分配新block并链接
+2. 支持任意大小的分配（大对象自动创建足够大的block）
+3. 8字节内存对齐
+4. 可选线程安全（`AGENTC_ARENA_THREAD_SAFE` 宏）
+5. 新增统计API用于监控内存使用
+
+### 内存配置移至Port层 (已完成)
+
+**修改文件：**
+- `include/agentc/platform.h` - 新增平台相关内存配置宏
+
+**配置项（可通过编译选项覆盖）：**
+
+| 宏 | 嵌入式默认 | 桌面默认 | 说明 |
+|---|---|---|---|
+| `AGENTC_SESSION_ARENA_SIZE` | 256KB | 4MB | Session arena大小 |
+| `AGENTC_AGENT_ARENA_SIZE` | 128KB | 1MB | Agent arena大小 |
+| `AGENTC_ARRAY_INITIAL_CAPACITY` | 4 | 16 | 动态数组初始容量 |
+| `AGENTC_ARENA_MIN_BLOCK_SIZE` | 4KB | 4KB | Arena最小block |
+| `AGENTC_ARENA_GROWTH_FACTOR` | 2 | 2 | 扩容倍数 |
+
+**使用示例：**
+```bash
+# 自定义编译
+cmake -DAGENTC_AGENT_ARENA_SIZE=2097152 ..  # 2MB
+```
+
+---
+
 ## 问题分析：1000 Agent 高并发场景下的潜在问题
 
 ### 1. Session 容量硬限制 - 无法支持1000个Agent

@@ -35,6 +35,7 @@ typedef enum {
     AGENTC_ERR_PROTOCOL = -14,          /* Protocol error */
     AGENTC_ERR_PARSE = -15,             /* Parse error */
     AGENTC_ERR_RESPONSE_TOO_LARGE = -16, /* Response size exceeds limit */
+    AGENTC_ERR_INVALID_STATE = -17,     /* Invalid state for operation */
 } agentc_err_t;
 
 /*============================================================================

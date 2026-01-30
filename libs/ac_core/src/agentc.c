@@ -36,6 +36,7 @@ const char *ac_strerror(agentc_err_t err) {
         case AGENTC_ERR_PROTOCOL:        return "Protocol error";
         case AGENTC_ERR_PARSE:           return "Parse error";
         case AGENTC_ERR_RESPONSE_TOO_LARGE: return "Response size exceeds limit";
+        case AGENTC_ERR_INVALID_STATE:   return "Invalid state for operation";
         default:                         return "Unknown error";
     }
 }
