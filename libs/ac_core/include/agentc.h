@@ -44,6 +44,7 @@
 #include "agentc/mcp.h"
 #include "agentc/llm.h"
 #include "agentc/log.h"
+#include "agentc/trace.h"
 
 
 #ifdef __cplusplus

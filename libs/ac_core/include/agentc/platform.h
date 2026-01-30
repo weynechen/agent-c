@@ -148,4 +148,24 @@
     #endif
 #endif
 
+/*============================================================================
+ * Platform Time Functions
+ * 
+ * These functions must be implemented in the port layer.
+ *============================================================================*/
+
+#include <stdint.h>
+
+/**
+ * @brief Get current timestamp in milliseconds since Unix epoch
+ * 
+ * Platform implementations:
+ * - POSIX: port/posix/log_posix.c (gettimeofday)
+ * - Windows: port/windows/log_windows.c (GetSystemTimeAsFileTime)
+ * - FreeRTOS: port/freertos/log_freertos.c (xTaskGetTickCount)
+ * 
+ * @return Milliseconds since Unix epoch (Jan 1, 1970)
+ */
+uint64_t ac_platform_timestamp_ms(void);
+
 #endif /* AGENTC_PLATFORM_H */

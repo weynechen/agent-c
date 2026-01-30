@@ -112,7 +112,35 @@ target_include_directories(chat_markdown PRIVATE
     ${CMAKE_SOURCE_DIR}/libs/ac_hosted/src
 )
 
-# Example 6: TUI chat demo with Notcurses (WeChat-style interface)
+# Example 6: Trace demo - Agent observability
+add_executable(chat_trace 
+    hosted/chat_trace.c
+    hosted/demo_tools.c
+    ${DEMO_TOOLS_GEN_C}
+)
+add_dependencies(chat_trace chat_tools_gen)
+
+target_link_libraries(chat_trace PRIVATE
+    ac_core::ac_core
+    ac_hosted::ac_hosted
+    agentc_dotenv
+    agentc_platform_wrap
+)
+target_include_directories(chat_trace PRIVATE
+    ${CJSON_INCLUDE}
+    ${CMAKE_SOURCE_DIR}/external/args/include
+    ${CMAKE_SOURCE_DIR}/libs/ac_hosted/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/hosted
+    ${CMAKE_CURRENT_BINARY_DIR}
+)
+if(NOT WIN32)
+  target_link_libraries(chat_trace PRIVATE m)
+endif()
+if(AGENTC_USE_CURL)
+  target_link_libraries(chat_trace PRIVATE CURL::libcurl)
+endif()
+
+# Example 7: TUI chat demo with Notcurses (WeChat-style interface)
 # NOTE: chat_tui needs to be rewritten to use the new Session/Agent API
 # Temporarily disabled until rewrite is complete
 # find_package(PkgConfig QUIET)
@@ -126,4 +154,4 @@ target_include_directories(chat_markdown PRIVATE
 # endif()
 message(STATUS "chat_tui: Temporarily disabled (needs API rewrite)")
 
-message(STATUS "AgentC Examples: hello, chat_demo, chat_tools, chat_mcp, chat_markdown")
+message(STATUS "AgentC Examples: hello, chat_demo, chat_tools, chat_mcp, chat_markdown, chat_trace")

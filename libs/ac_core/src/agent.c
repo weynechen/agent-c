@@ -9,6 +9,8 @@
 #include "agentc/tool.h"
 #include "agentc/message.h"
 #include "agentc/log.h"
+#include "agentc/trace.h"
+#include "cJSON.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -39,6 +41,9 @@ typedef struct {
     const char *name;
     const char *instructions;
     int max_iterations;
+    
+    /* Trace context */
+    ac_trace_ctx_t trace_ctx;
 } agent_priv_t;
 
 /*============================================================================
@@ -48,6 +53,87 @@ typedef struct {
 struct ac_agent {
     agent_priv_t *priv;
 };
+
+/*============================================================================
+ * Trace Helper Functions
+ *============================================================================*/
+
+/* Forward declaration for message JSON conversion */
+cJSON* ac_message_to_json(const ac_message_t* msg);
+cJSON* ac_tool_call_to_json(const ac_tool_call_t* call);
+
+/**
+ * @brief Serialize message list to JSON array string
+ */
+static char *serialize_messages_json(const ac_message_t *messages) {
+    if (!messages) {
+        return NULL;
+    }
+    
+    cJSON *arr = cJSON_CreateArray();
+    if (!arr) {
+        return NULL;
+    }
+    
+    for (const ac_message_t *msg = messages; msg; msg = msg->next) {
+        cJSON *msg_json = ac_message_to_json(msg);
+        if (msg_json) {
+            cJSON_AddItemToArray(arr, msg_json);
+        }
+    }
+    
+    char *json_str = cJSON_PrintUnformatted(arr);
+    cJSON_Delete(arr);
+    
+    return json_str;
+}
+
+/**
+ * @brief Serialize tool calls to JSON array string
+ */
+static char *serialize_tool_calls_json(const ac_tool_call_t *calls) {
+    if (!calls) {
+        return NULL;
+    }
+    
+    cJSON *arr = cJSON_CreateArray();
+    if (!arr) {
+        return NULL;
+    }
+    
+    for (const ac_tool_call_t *call = calls; call; call = call->next) {
+        cJSON *call_json = ac_tool_call_to_json(call);
+        if (call_json) {
+            cJSON_AddItemToArray(arr, call_json);
+        }
+    }
+    
+    char *json_str = cJSON_PrintUnformatted(arr);
+    cJSON_Delete(arr);
+    
+    return json_str;
+}
+
+/**
+ * @brief Emit trace event with common fields populated
+ */
+static void emit_trace_event(
+    agent_priv_t *priv, 
+    ac_trace_event_type_t type,
+    ac_trace_event_t *event
+) {
+    if (!ac_trace_is_enabled()) {
+        return;
+    }
+    
+    event->type = type;
+    event->timestamp_ms = ac_trace_timestamp_ms();
+    event->trace_id = priv->trace_ctx.trace_id;
+    event->agent_name = priv->name;
+    event->sequence = ac_trace_ctx_next_seq(&priv->trace_ctx);
+    
+    ac_trace_emit(event);
+}
 
 /*============================================================================
  * Tool Schema Builder
@@ -96,6 +182,16 @@ static char *execute_tool_call(agent_priv_t *priv, const ac_tool_call_t *call) {
     AC_LOG_INFO("Executing tool: %s(%s)", call->name, 
                 call->arguments ? call->arguments : "{}");
     
+    /* Emit tool_call trace event */
+    uint64_t tool_start_ms = ac_trace_timestamp_ms();
+    if (ac_trace_is_enabled()) {
+        ac_trace_event_t event = {0};
+        event.data.tool_call.id = call->id;
+        event.data.tool_call.name = call->name;
+        event.data.tool_call.arguments = call->arguments;
+        emit_trace_event(priv, AC_TRACE_TOOL_CALL, &event);
+    }
+    
     char *result = ac_tool_registry_call(
         priv->tools,
         call->name,
@@ -104,6 +200,18 @@ static char *execute_tool_call(agent_priv_t *priv, const ac_tool_call_t *call) {
     );
     
     AC_LOG_DEBUG("Tool %s returned: %s", call->name, result ? result : "NULL");
+    
+    /* Emit tool_result trace event */
+    if (ac_trace_is_enabled()) {
+        uint64_t tool_end_ms = ac_trace_timestamp_ms();
+        ac_trace_event_t event = {0};
+        event.data.tool_result.id = call->id;
+        event.data.tool_result.name = call->name;
+        event.data.tool_result.result = result;
+        event.data.tool_result.duration_ms = tool_end_ms - tool_start_ms;
+        event.data.tool_result.success = (result != NULL && strstr(result, "\"error\"") == NULL) ? 1 : 0;
+        emit_trace_event(priv, AC_TRACE_TOOL_RESULT, &event);
+    }
     
     return result ? result : strdup("{\"error\":\"Tool returned NULL\"}");
 }
@@ -149,6 +257,19 @@ static ac_agent_result_t *agent_run_impl(agent_priv_t *priv, const char *message
         return NULL;
     }
     
+    /* Initialize trace context */
+    ac_trace_ctx_init(&priv->trace_ctx, priv->name);
+    
+    /* Emit agent_start trace event */
+    if (ac_trace_is_enabled()) {
+        ac_trace_event_t event = {0};
+        event.data.agent_start.message = message;
+        event.data.agent_start.instructions = priv->instructions;
+        event.data.agent_start.max_iterations = priv->max_iterations;
+        event.data.agent_start.tool_count = priv->tools ? ac_tool_registry_count(priv->tools) : 0;
+        emit_trace_event(priv, AC_TRACE_AGENT_START, &event);
+    }
+    
     /* Add system message if this is the first message */
     if (!priv->messages && priv->instructions) {
         ac_message_t *sys_msg = ac_message_create(
@@ -184,6 +305,27 @@ static ac_agent_result_t *agent_run_impl(agent_priv_t *priv, const char *message
         iteration++;
         AC_LOG_DEBUG("ReACT iteration %d/%d", iteration, priv->max_iterations);
         
+        /* Emit react_iter_start trace event */
+        if (ac_trace_is_enabled()) {
+            ac_trace_event_t event = {0};
+            event.data.react_iter.iteration = iteration;
+            event.data.react_iter.max_iterations = priv->max_iterations;
+            emit_trace_event(priv, AC_TRACE_REACT_ITER_START, &event);
+        }
+        
+        /* Emit llm_request trace event */
+        char *messages_json = NULL;
+        uint64_t llm_start_ms = ac_trace_timestamp_ms();
+        if (ac_trace_is_enabled()) {
+            messages_json = serialize_messages_json(priv->messages);
+            ac_trace_event_t event = {0};
+            event.data.llm_request.model = NULL;  /* Will be filled in llm.c */
+            event.data.llm_request.messages_json = messages_json;
+            event.data.llm_request.tools_json = tools_schema;
+            event.data.llm_request.message_count = priv->message_count;
+            emit_trace_event(priv, AC_TRACE_LLM_REQUEST, &event);
+        }
+        
         /* Call LLM with tools */
         ac_chat_response_t response;
         ac_chat_response_init(&response);
@@ -194,6 +336,34 @@ static ac_agent_result_t *agent_run_impl(agent_priv_t *priv, const char *message
             tools_schema,
             &response
         );
+        
+        /* Emit llm_response trace event */
+        if (ac_trace_is_enabled()) {
+            uint64_t llm_end_ms = ac_trace_timestamp_ms();
+            char *tool_calls_json = serialize_tool_calls_json(response.tool_calls);
+            
+            ac_trace_event_t event = {0};
+            event.data.llm_response.content = response.content;
+            event.data.llm_response.tool_calls_json = tool_calls_json;
+            event.data.llm_response.tool_call_count = response.tool_call_count;
+            event.data.llm_response.prompt_tokens = response.prompt_tokens;
+            event.data.llm_response.completion_tokens = response.completion_tokens;
+            event.data.llm_response.total_tokens = response.total_tokens;
+            event.data.llm_response.finish_reason = response.finish_reason;
+            event.data.llm_response.duration_ms = llm_end_ms - llm_start_ms;
+            emit_trace_event(priv, AC_TRACE_LLM_RESPONSE, &event);
+            
+            /* Accumulate token usage */
+            priv->trace_ctx.total_prompt_tokens += response.prompt_tokens;
+            priv->trace_ctx.total_completion_tokens += response.completion_tokens;
+            
+            if (tool_calls_json) free(tool_calls_json);
+        }
+        
+        if (messages_json) {
+            free(messages_json);
+            messages_json = NULL;
+        }
         
         if (err != AGENTC_OK) {
             AC_LOG_ERROR("LLM chat failed: %d", err);
@@ -242,6 +412,14 @@ static ac_agent_result_t *agent_run_impl(agent_priv_t *priv, const char *message
                 }
             }
             
+            /* Emit react_iter_end trace event */
+            if (ac_trace_is_enabled()) {
+                ac_trace_event_t event = {0};
+                event.data.react_iter.iteration = iteration;
+                event.data.react_iter.max_iterations = priv->max_iterations;
+                emit_trace_event(priv, AC_TRACE_REACT_ITER_END, &event);
+            }
+            
             /* Free response and continue loop */
             ac_chat_response_free(&response);
             continue;
@@ -261,6 +439,14 @@ static ac_agent_result_t *agent_run_impl(agent_priv_t *priv, const char *message
             }
         }
         
+        /* Emit react_iter_end trace event */
+        if (ac_trace_is_enabled()) {
+            ac_trace_event_t event = {0};
+            event.data.react_iter.iteration = iteration;
+            event.data.react_iter.max_iterations = priv->max_iterations;
+            emit_trace_event(priv, AC_TRACE_REACT_ITER_END, &event);
+        }
+        
         ac_chat_response_free(&response);
         break;  /* Exit loop - we have the final response */
     }
@@ -272,6 +458,18 @@ static ac_agent_result_t *agent_run_impl(agent_priv_t *priv, const char *message
     
     if (iteration >= priv->max_iterations && !final_content) {
         AC_LOG_WARN("ReACT loop reached max iterations (%d)", priv->max_iterations);
+    }
+    
+    /* Emit agent_end trace event */
+    if (ac_trace_is_enabled()) {
+        uint64_t end_time_ms = ac_trace_timestamp_ms();
+        ac_trace_event_t event = {0};
+        event.data.agent_end.content = final_content;
+        event.data.agent_end.iterations = iteration;
+        event.data.agent_end.total_prompt_tokens = priv->trace_ctx.total_prompt_tokens;
+        event.data.agent_end.total_completion_tokens = priv->trace_ctx.total_completion_tokens;
+        event.data.agent_end.duration_ms = end_time_ms - priv->trace_ctx.start_time_ms;
+        emit_trace_event(priv, AC_TRACE_AGENT_END, &event);
     }
     
     /* Allocate result from agent's arena */
