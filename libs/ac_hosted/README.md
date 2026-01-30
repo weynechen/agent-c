@@ -57,12 +57,26 @@ ac_skills_destroy(skills);
 ```
 
 **Features**:
-- Progressive disclosure: discover metadata first, load content on enable
+- Progressive disclosure: discover metadata first, load content on demand
 - Parse SKILL.md frontmatter (name, description, license, compatibility, allowed-tools)
-- Enable/disable skills dynamically
+- **Skill Tool**: Agent can load skills dynamically via tool call
+- Enable/disable skills programmatically
 - Generate discovery prompt (skill list) and active prompt (full instructions)
 - Validate allowed_tools against tool registry
 - Script execution interface (reserved, not yet implemented)
+
+**Skill Tool Usage**:
+```c
+// Create skill tool for Agent
+ac_tool_t *skill_tool = ac_skills_create_tool(skills);
+ac_tool_registry_add(registry, skill_tool);
+
+// Agent can now call: skill({"name": "code-review"})
+// Returns full skill instructions
+
+// Cleanup
+ac_skills_destroy_tool(skill_tool);
+```
 
 ### 3. MCP Client (`src/mcp/`)
 **Status**: ⚠️ Stub Implementation
@@ -185,7 +199,7 @@ ac_hosted/
 | Feature | Status | Lines | Completeness |
 |---------|--------|-------|--------------|
 | Rules | ✅ Complete | ~350 | 100% |
-| Skills | ✅ Phase 1 | ~600 | 80% |
+| Skills | ✅ Phase 1 | ~800 | 90% |
 | MCP | ⚠️ Stub | ~200 | 10% |
 | Markdown | ✅ Complete | ~2000 | 100% |
 | DotEnv | ✅ Complete | ~200 | 100% |
@@ -206,6 +220,7 @@ ac_hosted/
 - [x] Tool validation (allowed_tools)
 - [x] Discovery prompt generation
 - [x] Active prompt generation
+- [x] **Skill Tool** - Agent loads skills via tool call
 - [ ] Script execution (reserved interface)
 - [ ] Auto-match activation by task description
 

@@ -283,6 +283,58 @@ agentc_err_t ac_skills_validate_tools(
 );
 
 /*============================================================================
+ * Skill Tool (for Agent to load skills dynamically)
+ *============================================================================*/
+
+/**
+ * @brief Build tool description with available skills
+ *
+ * Generates a description string that includes the list of available skills.
+ * Used as the description for the skill loading tool.
+ *
+ * @param skills  Skills manager
+ * @return Description string (caller must free), NULL on error
+ */
+char *ac_skills_build_tool_description(const ac_skills_t *skills);
+
+/**
+ * @brief Create the skill loading tool
+ *
+ * Creates a tool that allows the Agent to load skill content dynamically.
+ * The tool's description includes available skills, and when called with
+ * a skill name, returns the full skill instructions.
+ *
+ * Usage:
+ * @code
+ * ac_skills_t *skills = ac_skills_create();
+ * ac_skills_discover_dir(skills, ".skills");
+ *
+ * // Create skill tool
+ * ac_tool_t *skill_tool = ac_skills_create_tool(skills);
+ *
+ * // Register with agent's tool registry
+ * ac_tool_registry_add(registry, skill_tool);
+ *
+ * // ... use agent ...
+ *
+ * // Cleanup
+ * ac_skills_destroy_tool(skill_tool);
+ * ac_skills_destroy(skills);
+ * @endcode
+ *
+ * @param skills  Skills manager (must remain valid while tool is in use)
+ * @return Tool definition (caller must destroy with ac_skills_destroy_tool)
+ */
+ac_tool_t *ac_skills_create_tool(ac_skills_t *skills);
+
+/**
+ * @brief Destroy skill tool
+ *
+ * @param tool  Tool created by ac_skills_create_tool
+ */
+void ac_skills_destroy_tool(ac_tool_t *tool);
+
+/*============================================================================
  * Script Execution Interface (Reserved - Not Implemented)
  *============================================================================*/
 

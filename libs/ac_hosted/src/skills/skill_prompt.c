@@ -15,12 +15,20 @@
  * Constants
  *============================================================================*/
 
-static const char *DISCOVERY_HEADER =
-    "<available-skills>\n"
-    "The following skills are available. "
-    "Enable a skill when the task matches its description.\n\n";
-
-static const char *DISCOVERY_FOOTER = "</available-skills>\n";
+/*
+ * Discovery prompt format following agentskills.io specification:
+ * https://agentskills.io/integrate-skills
+ *
+ * For Claude models, use XML format:
+ * <available_skills>
+ *   <skill>
+ *     <name>...</name>
+ *     <description>...</description>
+ *   </skill>
+ * </available_skills>
+ */
+static const char *DISCOVERY_HEADER = "<available_skills>\n";
+static const char *DISCOVERY_FOOTER = "</available_skills>\n";
 
 static const char *ACTIVE_HEADER = "<active-skills>\n\n";
 static const char *ACTIVE_FOOTER = "</active-skills>\n";
@@ -110,14 +118,23 @@ char *ac_skills_build_discovery_prompt(const ac_skills_t *skills) {
         return NULL;
     }
     
-    /* Calculate total size */
+    /* Calculate total size for XML format:
+     * <available_skills>
+     *   <skill>
+     *     <name>...</name>
+     *     <description>...</description>
+     *   </skill>
+     * </available_skills>
+     */
     size_t total_size = strlen(DISCOVERY_HEADER) + strlen(DISCOVERY_FOOTER) + 1;
     
     const ac_skill_t *skill = skills->head;
     while (skill) {
         if (skill->meta.name && skill->meta.description) {
-            /* "- name: description\n" */
-            total_size += 4 + strlen(skill->meta.name) + strlen(skill->meta.description);
+            /* XML tags overhead + content */
+            total_size += 80; /* <skill>\n  <name></name>\n  <description></description>\n</skill>\n */
+            total_size += strlen(skill->meta.name);
+            total_size += strlen(skill->meta.description);
         }
         skill = skill->next;
     }
@@ -137,11 +154,16 @@ char *ac_skills_build_discovery_prompt(const ac_skills_t *skills) {
     memcpy(p, DISCOVERY_HEADER, header_len);
     p += header_len;
     
-    /* Skill entries */
+    /* Skill entries in XML format */
     skill = skills->head;
     while (skill) {
         if (skill->meta.name && skill->meta.description) {
-            p += sprintf(p, "- %s: %s\n", skill->meta.name, skill->meta.description);
+            p += sprintf(p, 
+                "  <skill>\n"
+                "    <name>%s</name>\n"
+                "    <description>%s</description>\n"
+                "  </skill>\n",
+                skill->meta.name, skill->meta.description);
         }
         skill = skill->next;
     }

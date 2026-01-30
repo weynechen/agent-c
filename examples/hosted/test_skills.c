@@ -152,8 +152,8 @@ int main(int argc, char *argv[]) {
     printf("\n[6] Discovery Prompt Generation\n");
     TEST("ac_skills_build_discovery_prompt");
     char *discovery = ac_skills_build_discovery_prompt(skills);
-    if (discovery && strstr(discovery, "<available-skills>") && 
-        strstr(discovery, "code-review") && strstr(discovery, "debugging")) {
+    if (discovery && strstr(discovery, "<available_skills>") && 
+        strstr(discovery, "<name>code-review</name>") && strstr(discovery, "<name>debugging</name>")) {
         printf(GREEN "PASS" RESET " (%zu bytes)\n", strlen(discovery));
         tests_passed++;
         
@@ -198,8 +198,73 @@ int main(int argc, char *argv[]) {
     }
     free(active);
     
+    /* Test 8: Skill Tool */
+    printf("\n[8] Skill Tool\n");
+    
+    /* Re-create skills for tool test */
+    ac_skills_disable_all(skills);
+    
+    TEST("ac_skills_create_tool");
+    ac_tool_t *tool = ac_skills_create_tool(skills);
+    if (tool && tool->name && strcmp(tool->name, "skill") == 0) {
+        PASS();
+    } else {
+        FAIL("tool creation failed");
+    }
+    
+    TEST("tool description contains available_skills");
+    if (tool && tool->description && 
+        strstr(tool->description, "<available_skills>") &&
+        strstr(tool->description, "code-review")) {
+        printf(GREEN "PASS" RESET " (%zu bytes)\n", strlen(tool->description));
+        tests_passed++;
+        
+        printf("\n  --- Skill Tool Description ---\n");
+        printf("%.600s", tool->description);
+        if (strlen(tool->description) > 600) printf("...\n");
+        printf("\n  --- End ---\n");
+    } else {
+        FAIL("invalid description");
+    }
+    
+    TEST("tool execute - load skill");
+    if (tool && tool->execute) {
+        char *result = tool->execute(NULL, "{\"name\": \"code-review\"}", tool->priv);
+        if (result && strstr(result, "## Skill: code-review")) {
+            printf(GREEN "PASS" RESET " (%zu bytes)\n", strlen(result));
+            tests_passed++;
+            
+            printf("\n  --- Tool Execute Result Preview ---\n");
+            printf("%.400s", result);
+            if (strlen(result) > 400) printf("...\n");
+            printf("\n  --- End ---\n");
+        } else {
+            FAIL("unexpected result");
+        }
+        free(result);
+    } else {
+        FAIL("tool has no execute function");
+    }
+    
+    TEST("tool execute - skill not found");
+    if (tool && tool->execute) {
+        char *result = tool->execute(NULL, "{\"name\": \"nonexistent\"}", tool->priv);
+        if (result && strstr(result, "error") && strstr(result, "not found")) {
+            PASS();
+        } else {
+            FAIL("should return error");
+        }
+        free(result);
+    } else {
+        FAIL("tool has no execute function");
+    }
+    
+    TEST("ac_skills_destroy_tool");
+    ac_skills_destroy_tool(tool);
+    PASS();
+    
     /* Cleanup */
-    printf("\n[8] Cleanup\n");
+    printf("\n[9] Cleanup\n");
     TEST("ac_skills_destroy");
     ac_skills_destroy(skills);
     PASS();
