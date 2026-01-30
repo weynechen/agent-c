@@ -4,7 +4,7 @@
  *
  * Provides pthread-compatible API across platforms:
  * - POSIX (Linux/macOS): Native pthread
- * - Windows: Thin wrapper over CRITICAL_SECTION/SRWLock
+ * - Windows: Native pthread (via pthreads-win32, install with vcpkg)
  * - FreeRTOS: Wrapper over FreeRTOS semaphores
  *
  * Usage:
@@ -23,52 +23,14 @@
 #include "agentc/platform.h"
 
 /*============================================================================
- * POSIX Platforms (Linux/macOS) - Native pthread
+ * POSIX Platforms (Linux/macOS) and Windows (via pthreads-win32/vcpkg)
  *============================================================================*/
 
-#if defined(AGENTC_PLATFORM_LINUX) || defined(AGENTC_PLATFORM_MACOS)
+#if defined(AGENTC_PLATFORM_LINUX) || defined(AGENTC_PLATFORM_MACOS) || defined(AGENTC_PLATFORM_WINDOWS)
 
 #include <pthread.h>
 
 /* Native pthread - no wrapper needed */
-
-/*============================================================================
- * Windows - pthread compatibility layer
- *============================================================================*/
-
-#elif defined(AGENTC_PLATFORM_WINDOWS)
-
-#include <windows.h>
-
-/* Mutex type */
-typedef CRITICAL_SECTION pthread_mutex_t;
-typedef void* pthread_mutexattr_t;
-
-/* Mutex functions */
-static inline int pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr) {
-    (void)attr;
-    InitializeCriticalSection(mutex);
-    return 0;
-}
-
-static inline int pthread_mutex_destroy(pthread_mutex_t *mutex) {
-    DeleteCriticalSection(mutex);
-    return 0;
-}
-
-static inline int pthread_mutex_lock(pthread_mutex_t *mutex) {
-    EnterCriticalSection(mutex);
-    return 0;
-}
-
-static inline int pthread_mutex_unlock(pthread_mutex_t *mutex) {
-    LeaveCriticalSection(mutex);
-    return 0;
-}
-
-static inline int pthread_mutex_trylock(pthread_mutex_t *mutex) {
-    return TryEnterCriticalSection(mutex) ? 0 : -1;
-}
 
 /*============================================================================
  * FreeRTOS - pthread compatibility layer
@@ -82,6 +44,9 @@ static inline int pthread_mutex_trylock(pthread_mutex_t *mutex) {
 /* Mutex type */
 typedef SemaphoreHandle_t pthread_mutex_t;
 typedef void* pthread_mutexattr_t;
+
+/* Static initializer (will be lazily initialized on first use) */
+#define PTHREAD_MUTEX_INITIALIZER NULL
 
 /* Mutex functions */
 static inline int pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr) {
@@ -99,6 +64,13 @@ static inline int pthread_mutex_destroy(pthread_mutex_t *mutex) {
 }
 
 static inline int pthread_mutex_lock(pthread_mutex_t *mutex) {
+    /* Lazy initialization for statically initialized mutexes */
+    if (*mutex == NULL) {
+        *mutex = xSemaphoreCreateMutex();
+        if (*mutex == NULL) {
+            return -1;
+        }
+    }
     return (xSemaphoreTake(*mutex, portMAX_DELAY) == pdTRUE) ? 0 : -1;
 }
 
@@ -107,6 +79,13 @@ static inline int pthread_mutex_unlock(pthread_mutex_t *mutex) {
 }
 
 static inline int pthread_mutex_trylock(pthread_mutex_t *mutex) {
+    /* Lazy initialization for statically initialized mutexes */
+    if (*mutex == NULL) {
+        *mutex = xSemaphoreCreateMutex();
+        if (*mutex == NULL) {
+            return -1;
+        }
+    }
     return (xSemaphoreTake(*mutex, 0) == pdTRUE) ? 0 : -1;
 }
 
@@ -120,6 +99,9 @@ static inline int pthread_mutex_trylock(pthread_mutex_t *mutex) {
 
 typedef int pthread_mutex_t;
 typedef void* pthread_mutexattr_t;
+
+/* Static initializer (no-op for single-threaded) */
+#define PTHREAD_MUTEX_INITIALIZER 0
 
 static inline int pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr) {
     (void)attr;
