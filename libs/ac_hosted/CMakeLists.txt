@@ -32,6 +32,7 @@ set(AGENTC_HOSTED_SOURCES
     src/skills/skills.c
     src/skills/skill_parser.c
     src/skills/skill_prompt.c
+    src/skills/skill_tool.c
     src/sandbox/sandbox_common.c
     ${AGENTC_SANDBOX_SOURCE}
     src/trace/trace_json_exporter.c
