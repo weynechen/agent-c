@@ -37,11 +37,15 @@ typedef struct {
     
     /* Message history (stored in arena) */
     ac_message_t *messages;
+    ac_message_t *messages_tail;  /* Tail pointer for O(1) append */
     size_t message_count;
     
     const char *name;
     const char *instructions;
     int max_iterations;
+    
+    /* Cached tools schema (built once at creation) */
+    char *cached_tools_schema;
     
     /* Statistics for hooks */
     uint64_t run_start_time_ms;
@@ -56,6 +60,27 @@ typedef struct {
 struct ac_agent {
     agent_priv_t *priv;
 };
+
+/*============================================================================
+ * Message Append Helper (O(1) with tail pointer)
+ *============================================================================*/
+
+static void agent_append_message(agent_priv_t *priv, ac_message_t *message) {
+    if (!priv || !message) {
+        return;
+    }
+    
+    message->next = NULL;
+    
+    if (!priv->messages) {
+        priv->messages = message;
+        priv->messages_tail = message;
+    } else {
+        priv->messages_tail->next = message;
+        priv->messages_tail = message;
+    }
+    priv->message_count++;
+}
 
 /*============================================================================
  * Tool Schema Builder
@@ -190,8 +215,7 @@ static ac_agent_result_t *agent_run_impl(agent_priv_t *priv, const char *message
             priv->arena, AC_ROLE_SYSTEM, priv->instructions
         );
         if (sys_msg) {
-            ac_message_append(&priv->messages, sys_msg);
-            priv->message_count++;
+            agent_append_message(priv, sys_msg);
         }
     }
     
@@ -201,13 +225,12 @@ static ac_agent_result_t *agent_run_impl(agent_priv_t *priv, const char *message
         AC_LOG_ERROR("Failed to create user message");
         return NULL;
     }
-    ac_message_append(&priv->messages, user_msg);
-    priv->message_count++;
+    agent_append_message(priv, user_msg);
     
     AC_LOG_DEBUG("Added user message, total messages: %zu", priv->message_count);
     
-    /* Build tools schema */
-    char *tools_schema = build_tools_schema(priv);
+    /* Use cached tools schema */
+    char *tools_schema = priv->cached_tools_schema;
     
     /* ReACT loop */
     char *final_content = NULL;
@@ -276,7 +299,7 @@ static ac_agent_result_t *agent_run_impl(agent_priv_t *priv, const char *message
         
         if (err != AGENTC_OK) {
             AC_LOG_ERROR("LLM chat failed: %d", err);
-            if (tools_schema) free(tools_schema);
+            ac_chat_response_free(&response);
             return NULL;
         }
         
@@ -294,8 +317,7 @@ static ac_agent_result_t *agent_run_impl(agent_priv_t *priv, const char *message
             );
             
             if (asst_msg) {
-                ac_message_append(&priv->messages, asst_msg);
-                priv->message_count++;
+                agent_append_message(priv, asst_msg);
             }
             
             /* Execute each tool call and add results */
@@ -309,8 +331,7 @@ static ac_agent_result_t *agent_run_impl(agent_priv_t *priv, const char *message
                 );
                 
                 if (tool_msg) {
-                    ac_message_append(&priv->messages, tool_msg);
-                    priv->message_count++;
+                    agent_append_message(priv, tool_msg);
                 }
                 
                 if (result) free(result);
@@ -338,8 +359,7 @@ static ac_agent_result_t *agent_run_impl(agent_priv_t *priv, const char *message
                 priv->arena, AC_ROLE_ASSISTANT, response.content
             );
             if (asst_msg) {
-                ac_message_append(&priv->messages, asst_msg);
-                priv->message_count++;
+                agent_append_message(priv, asst_msg);
             }
         }
         
@@ -356,9 +376,6 @@ static ac_agent_result_t *agent_run_impl(agent_priv_t *priv, const char *message
         ac_chat_response_free(&response);
         break;
     }
-    
-    /* Cleanup */
-    if (tools_schema) free(tools_schema);
     
     if (iteration >= priv->max_iterations && !final_content) {
         AC_LOG_WARN("ReACT loop reached max iterations (%d)", priv->max_iterations);
@@ -428,7 +445,9 @@ ac_agent_t *ac_agent_create(ac_session_t *session, const ac_agent_params_t *para
     
     priv->session = session;
     priv->messages = NULL;
+    priv->messages_tail = NULL;
     priv->message_count = 0;
+    priv->cached_tools_schema = NULL;
     
     if (params->name) {
         priv->name = arena_strdup(priv->arena, params->name);
@@ -455,6 +474,13 @@ ac_agent_t *ac_agent_create(ac_session_t *session, const ac_agent_params_t *para
     if (priv->tools) {
         size_t tool_count = ac_tool_registry_count(priv->tools);
         AC_LOG_DEBUG("Agent configured with %zu tools", tool_count);
+        
+        /* Build and cache tools schema once at creation */
+        priv->cached_tools_schema = build_tools_schema(priv);
+        if (priv->cached_tools_schema) {
+            AC_LOG_DEBUG("Cached tools schema (%zu bytes)", 
+                         strlen(priv->cached_tools_schema));
+        }
     }
     
     agent->priv = priv;
@@ -493,6 +519,12 @@ void ac_agent_destroy(ac_agent_t *agent) {
     if (priv) {
         if (priv->llm) {
             ac_llm_cleanup(priv->llm);
+        }
+        
+        /* Free cached tools schema */
+        if (priv->cached_tools_schema) {
+            free(priv->cached_tools_schema);
+            priv->cached_tools_schema = NULL;
         }
         
         if (priv->arena) {

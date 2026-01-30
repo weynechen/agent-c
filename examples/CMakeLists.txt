@@ -140,7 +140,26 @@ if(AGENTC_USE_CURL)
   target_link_libraries(chat_trace PRIVATE CURL::libcurl)
 endif()
 
-# Example 7: TUI chat demo with Notcurses (WeChat-style interface)
+# Example 7: Multi-Agent Parallel Execution demo
+add_executable(chat_multi_agent hosted/chat_multi_agent.c)
+
+target_link_libraries(chat_multi_agent PRIVATE
+    ac_core::ac_core
+    ac_hosted::ac_hosted
+    agentc_dotenv
+)
+target_include_directories(chat_multi_agent PRIVATE
+    ${CJSON_INCLUDE}
+    ${CMAKE_SOURCE_DIR}/libs/ac_hosted/include
+)
+if(UNIX)
+  target_link_libraries(chat_multi_agent PRIVATE pthread)
+endif()
+if(AGENTC_USE_CURL)
+  target_link_libraries(chat_multi_agent PRIVATE CURL::libcurl)
+endif()
+
+# Example 8: TUI chat demo with Notcurses (WeChat-style interface)
 # NOTE: chat_tui needs to be rewritten to use the new Session/Agent API
 # Temporarily disabled until rewrite is complete
 # find_package(PkgConfig QUIET)
@@ -154,4 +173,4 @@ endif()
 # endif()
 message(STATUS "chat_tui: Temporarily disabled (needs API rewrite)")
 
-message(STATUS "AgentC Examples: hello, chat_demo, chat_tools, chat_mcp, chat_markdown, chat_trace")
+message(STATUS "AgentC Examples: hello, chat_demo, chat_tools, chat_mcp, chat_markdown, chat_trace, chat_multi_agent")
