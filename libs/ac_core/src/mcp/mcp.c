@@ -13,6 +13,22 @@
 #include <stdio.h>
 
 /*============================================================================
+ * HTTP Pool Integration (weak symbols for optional linking)
+ *============================================================================*/
+
+/* Weak declarations - resolved at link time if ac_hosted is linked */
+__attribute__((weak)) int ac_http_pool_is_initialized(void);
+__attribute__((weak)) agentc_http_client_t *ac_http_pool_acquire(uint32_t timeout_ms);
+__attribute__((weak)) void ac_http_pool_release(agentc_http_client_t *client);
+
+/**
+ * @brief Check if HTTP pool is available and initialized
+ */
+static int http_pool_available(void) {
+    return ac_http_pool_is_initialized && ac_http_pool_is_initialized();
+}
+
+/*============================================================================
  * Session API (External)
  *============================================================================*/
 
@@ -39,6 +55,9 @@ struct ac_mcp_client {
 
     /* Transport layer (polymorphic) */
     mcp_transport_t *transport;
+
+    /* HTTP client ownership */
+    int owns_http;                 /**< 1 if we created the client, 0 if from pool */
 
     /* Request ID counter */
     int request_id;
@@ -248,16 +267,31 @@ ac_mcp_client_t *ac_mcp_create(
     client->client_name = arena_strdup(arena, config->client_name ? config->client_name : "AgentC");
     client->client_version = arena_strdup(arena, config->client_version ? config->client_version : "1.0.0");
 
-    /* Create HTTP client */
+    /* Get HTTP client: from pool or create new */
     agentc_http_client_t *http = NULL;
-    agentc_http_client_config_t http_cfg = {
-        .default_timeout_ms = config->timeout_ms ? config->timeout_ms : MCP_DEFAULT_TIMEOUT_MS
-    };
+    
+    if (http_pool_available()) {
+        /* Acquire from pool */
+        http = ac_http_pool_acquire(config->timeout_ms ? config->timeout_ms : MCP_DEFAULT_TIMEOUT_MS);
+        if (!http) {
+            AC_LOG_ERROR("Failed to acquire HTTP client from pool");
+            return NULL;
+        }
+        client->owns_http = 0;
+        AC_LOG_DEBUG("MCP client using HTTP pool");
+    } else {
+        /* Create own HTTP client */
+        agentc_http_client_config_t http_cfg = {
+            .default_timeout_ms = config->timeout_ms ? config->timeout_ms : MCP_DEFAULT_TIMEOUT_MS
+        };
 
-    agentc_err_t err = agentc_http_client_create(&http_cfg, &http);
-    if (err != AGENTC_OK || !http) {
-        AC_LOG_ERROR("Failed to create HTTP client: %s", ac_strerror(err));
-        return NULL;
+        agentc_err_t err = agentc_http_client_create(&http_cfg, &http);
+        if (err != AGENTC_OK || !http) {
+            AC_LOG_ERROR("Failed to create HTTP client: %s", ac_strerror(err));
+            return NULL;
+        }
+        client->owns_http = 1;
+        AC_LOG_DEBUG("MCP client using own HTTP client");
     }
 
     /* Create transport based on URL */
@@ -270,7 +304,11 @@ ac_mcp_client_t *ac_mcp_create(
 
     if (!client->transport) {
         AC_LOG_ERROR("Failed to create transport");
-        agentc_http_client_destroy(http);
+        if (client->owns_http) {
+            agentc_http_client_destroy(http);
+        } else {
+            ac_http_pool_release(http);
+        }
         return NULL;
     }
 
@@ -279,14 +317,22 @@ ac_mcp_client_t *ac_mcp_create(
     client->tools = (mcp_tool_info_t *)arena_alloc(arena, sizeof(mcp_tool_info_t) * client->tool_capacity);
     if (!client->tools) {
         AC_LOG_ERROR("Failed to allocate tool array");
-        agentc_http_client_destroy(http);
+        if (client->owns_http) {
+            agentc_http_client_destroy(http);
+        } else {
+            ac_http_pool_release(http);
+        }
         return NULL;
     }
 
     /* Register with session */
     if (ac_session_add_mcp(session, client) != AGENTC_OK) {
         AC_LOG_ERROR("Failed to register MCP client with session");
-        agentc_http_client_destroy(http);
+        if (client->owns_http) {
+            agentc_http_client_destroy(http);
+        } else {
+            ac_http_pool_release(http);
+        }
         return NULL;
     }
 
@@ -664,9 +710,13 @@ void ac_mcp_cleanup(ac_mcp_client_t *client) {
             client->transport->ops->disconnect(client->transport);
         }
 
-        /* Destroy HTTP client */
+        /* Release or destroy HTTP client based on ownership */
         if (client->transport->http) {
-            agentc_http_client_destroy(client->transport->http);
+            if (client->owns_http) {
+                agentc_http_client_destroy(client->transport->http);
+            } else {
+                ac_http_pool_release(client->transport->http);
+            }
         }
 
         client->transport->ops->destroy(client->transport);

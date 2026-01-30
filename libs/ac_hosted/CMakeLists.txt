@@ -33,6 +33,7 @@ set(AGENTC_HOSTED_SOURCES
     src/sandbox/sandbox_common.c
     ${AGENTC_SANDBOX_SOURCE}
     src/trace/trace_json_exporter.c
+    src/http_pool/http_pool.c
 )
 
 # Component: dotenv
