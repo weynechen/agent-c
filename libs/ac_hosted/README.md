@@ -24,24 +24,45 @@ char *prompt = ac_rules_build_prompt(rules, base_prompt);
 - Automatic system prompt generation
 
 ### 2. Skills System (`src/skills/`)
-**Status**: ⚠️ Partially Implemented
+**Status**: ✅ Implemented (Phase 1)
 
-Manage reusable skill templates with associated tools and prompts.
+Progressive skill loading following [agentskills.io](https://agentskills.io) specification.
+Skills are discovered from directories containing `SKILL.md` files.
 
 **API**:
 ```c
 #include <agentc/skills.h>
 
 ac_skills_t *skills = ac_skills_create();
-ac_skills_load_dir(skills, ".code-agentc/skills");
-ac_skills_enable(skills, "file_operations");
-ac_skills_validate_tools(skills, tool_registry);
+
+// Discover skills (loads metadata only)
+ac_skills_discover_dir(skills, ".code-agentc/skills");
+
+// Build discovery prompt for system message
+char *discovery = ac_skills_build_discovery_prompt(skills);
+
+// Enable specific skill (loads full content)
+ac_skills_enable(skills, "pdf-processing");
+
+// Build active prompt with full instructions
+char *active = ac_skills_build_active_prompt(skills);
+
+// Validate skill's allowed_tools against registry
+ac_skills_validate_tools(skills, "pdf-processing", tool_registry);
+
+// Cleanup
+free(discovery);
+free(active);
+ac_skills_destroy(skills);
 ```
 
 **Features**:
-- Load skills from YAML files (TODO: YAML parsing)
+- Progressive disclosure: discover metadata first, load content on enable
+- Parse SKILL.md frontmatter (name, description, license, compatibility, allowed-tools)
 - Enable/disable skills dynamically
-- Tool validation
+- Generate discovery prompt (skill list) and active prompt (full instructions)
+- Validate allowed_tools against tool registry
+- Script execution interface (reserved, not yet implemented)
 
 ### 3. MCP Client (`src/mcp/`)
 **Status**: ⚠️ Stub Implementation
@@ -145,18 +166,18 @@ ac_hosted/
 ├── include/agentc/
 │   ├── rules.h          # Rules management API
 │   ├── skills.h         # Skills management API
-│   └── mcp.h            # MCP client API
+│   └── ...
 ├── src/
 │   ├── rules/
 │   │   └── rules.c      # Rules implementation
 │   ├── skills/
-│   │   └── skills.c     # Skills implementation
-│   ├── mcp/
-│   │   └── mcp.c        # MCP client implementation
+│   │   ├── skills.c          # Skills manager
+│   │   ├── skill_parser.c    # SKILL.md frontmatter parser
+│   │   ├── skill_prompt.c    # Prompt generation
+│   │   └── skills_internal.h # Internal structures
+│   ├── sandbox/         # Process sandboxing
 │   └── markdown/        # Markdown renderer
-└── components/          # Third-party dependencies
-    ├── dotenv/          # Environment variables
-    └── pcre2/           # Regex (for markdown)
+└── ...
 ```
 
 ## Implementation Status
@@ -164,7 +185,7 @@ ac_hosted/
 | Feature | Status | Lines | Completeness |
 |---------|--------|-------|--------------|
 | Rules | ✅ Complete | ~350 | 100% |
-| Skills | ⚠️ Partial | ~300 | 60% |
+| Skills | ✅ Phase 1 | ~600 | 80% |
 | MCP | ⚠️ Stub | ~200 | 10% |
 | Markdown | ✅ Complete | ~2000 | 100% |
 | DotEnv | ✅ Complete | ~200 | 100% |
@@ -181,9 +202,12 @@ ac_hosted/
 ### Skills System
 - [x] Basic structure
 - [x] Enable/disable skills
-- [ ] YAML parsing
-- [ ] Tool validation
-- [ ] Prompt template rendering
+- [x] YAML frontmatter parsing (simple parser)
+- [x] Tool validation (allowed_tools)
+- [x] Discovery prompt generation
+- [x] Active prompt generation
+- [ ] Script execution (reserved interface)
+- [ ] Auto-match activation by task description
 
 ### MCP Client
 - [ ] HTTP transport

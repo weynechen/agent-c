@@ -27,9 +27,11 @@ endif()
 
 # Hosted sources
 # Note: mcp and tools have been moved to ac_core
-# skills will be redesigned separately
 set(AGENTC_HOSTED_SOURCES
     src/rules/rules.c
+    src/skills/skills.c
+    src/skills/skill_parser.c
+    src/skills/skill_prompt.c
     src/sandbox/sandbox_common.c
     ${AGENTC_SANDBOX_SOURCE}
     src/trace/trace_json_exporter.c
@@ -119,10 +121,11 @@ target_include_directories(ac_hosted PUBLIC
     $<INSTALL_INTERFACE:include>
 )
 
-# Private includes for accessing ac_core port layer and sandbox internals
+# Private includes for accessing ac_core port layer and internal headers
 target_include_directories(ac_hosted PRIVATE
     ${CMAKE_SOURCE_DIR}/libs/ac_core/port    # HTTP client and other port abstractions
     ${CMAKE_CURRENT_SOURCE_DIR}/src/sandbox  # Sandbox internal headers
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/skills   # Skills internal headers
 )
 
 # Windows: Add dirent compatibility layer
@@ -155,4 +158,4 @@ install(DIRECTORY include/agentc
     FILES_MATCHING PATTERN "*.h"
 )
 
-message(STATUS "AgentC Hosted: rules, sandbox (${AGENTC_SANDBOX_PLATFORM}), markdown, dotenv built")
+message(STATUS "AgentC Hosted: rules, skills, sandbox (${AGENTC_SANDBOX_PLATFORM}), markdown, dotenv built")
