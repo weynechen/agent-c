@@ -22,14 +22,14 @@ typedef struct {
  * Transport Operations
  *============================================================================*/
 
-static agentc_err_t http_connect(mcp_transport_t *t) {
+static arc_err_t http_connect(mcp_transport_t *t) {
     /* HTTP is stateless, no connection needed */
     t->connected = 1;
     AC_LOG_DEBUG("HTTP transport: connected (stateless)");
-    return AGENTC_OK;
+    return ARC_OK;
 }
 
-static agentc_err_t http_request(
+static arc_err_t http_request(
     mcp_transport_t *t,
     const char *request_json,
     int request_id,
@@ -37,20 +37,20 @@ static agentc_err_t http_request(
 ) {
     if (!t->connected) {
         mcp_transport_set_error(t, "Not connected");
-        return AGENTC_ERR_NOT_CONNECTED;
+        return ARC_ERR_NOT_CONNECTED;
     }
 
     /* Build headers */
-    agentc_http_header_t *headers = mcp_build_headers(
+    arc_http_header_t *headers = mcp_build_headers(
         t,
         "application/json",
         "application/json, text/event-stream"
     );
 
     /* Build request */
-    agentc_http_request_t req = {
+    arc_http_request_t req = {
         .url = t->server_url,
-        .method = AGENTC_HTTP_POST,
+        .method = ARC_HTTP_POST,
         .headers = headers,
         .body = request_json,
         .body_len = strlen(request_json),
@@ -58,19 +58,19 @@ static agentc_err_t http_request(
         .verify_ssl = t->verify_ssl
     };
 
-    agentc_http_response_t resp = {0};
+    arc_http_response_t resp = {0};
 
     AC_LOG_DEBUG("HTTP request: POST %s", t->server_url);
 
     /* Send request */
-    agentc_err_t err = agentc_http_request(t->http, &req, &resp);
+    arc_err_t err = arc_http_request(t->http, &req, &resp);
 
-    agentc_http_header_free(headers);
+    arc_http_header_free(headers);
 
-    if (err != AGENTC_OK) {
+    if (err != ARC_OK) {
         mcp_transport_set_error(t, "HTTP request failed: %s",
                                  resp.error_msg ? resp.error_msg : ac_strerror(err));
-        agentc_http_response_free(&resp);
+        arc_http_response_free(&resp);
         return err;
     }
 
@@ -79,8 +79,8 @@ static agentc_err_t http_request(
         mcp_transport_set_error(t, "HTTP error %d: %s",
                                  resp.status_code,
                                  resp.body ? resp.body : "No body");
-        agentc_http_response_free(&resp);
-        return AGENTC_ERR_HTTP;
+        arc_http_response_free(&resp);
+        return ARC_ERR_HTTP;
     }
 
     /* Check response body */
@@ -90,25 +90,25 @@ static agentc_err_t http_request(
         if (request_id == 0) {
             AC_LOG_DEBUG("HTTP notification: empty response (normal)");
             *response_json = NULL;
-            agentc_http_response_free(&resp);
-            return AGENTC_OK;
+            arc_http_response_free(&resp);
+            return ARC_OK;
         }
         mcp_transport_set_error(t, "Empty response");
-        agentc_http_response_free(&resp);
-        return AGENTC_ERR_PROTOCOL;
+        arc_http_response_free(&resp);
+        return ARC_ERR_PROTOCOL;
     }
 
     AC_LOG_DEBUG("HTTP response: %d, %zu bytes", resp.status_code, resp.body_len);
 
     /* Return response (caller frees) */
     *response_json = strdup(resp.body);
-    agentc_http_response_free(&resp);
+    arc_http_response_free(&resp);
 
     if (!*response_json) {
-        return AGENTC_ERR_MEMORY;
+        return ARC_ERR_MEMORY;
     }
 
-    return AGENTC_OK;
+    return ARC_OK;
 }
 
 static void http_disconnect(mcp_transport_t *t) {
@@ -138,7 +138,7 @@ static const mcp_transport_ops_t http_ops = {
 
 mcp_transport_t *mcp_http_create(
     arena_t *arena,
-    agentc_http_client_t *http,
+    arc_http_client_t *http,
     const ac_mcp_config_t *config
 ) {
     mcp_http_transport_t *t = (mcp_http_transport_t *)arena_alloc(

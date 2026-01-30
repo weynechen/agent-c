@@ -1,11 +1,11 @@
 /**
  * @file log_posix.c
  * @brief POSIX platform logging implementation
- * 
+ *
  * Outputs colored logs to stderr with timestamp and level prefix.
  */
 
-#include "agentc/log.h"
+#include "arc/log.h"
 #include <stdio.h>
 #include <time.h>
 #include <string.h>
@@ -72,16 +72,16 @@ void ac_log_platform_default_handler(
     // Print log prefix with color
     const char* color = get_level_color(level);
     const char* level_str = get_level_string(level);
-    
-    fprintf(stderr, "%s[%s] [%s]%s ", 
+
+    fprintf(stderr, "%s[%s] [%s]%s ",
             color, time_buf, level_str, COLOR_RESET);
-    
+
     // Print message
     vfprintf(stderr, fmt, args);
-    
+
     // Print source location in gray
     fprintf(stderr, " %s(%s:%d %s)%s\n",
             COLOR_GRAY, get_basename(file), line, func, COLOR_RESET);
-    
+
     fflush(stderr);
 }

@@ -3,10 +3,10 @@
  * @brief Internal LLM structure definition
  */
 
-#ifndef AGENTC_LLM_INTERNAL_H
-#define AGENTC_LLM_INTERNAL_H
+#ifndef ARC_LLM_INTERNAL_H
+#define ARC_LLM_INTERNAL_H
 
-#include "agentc/llm.h"
+#include "arc/llm.h"
 #include "llm_provider.h"
 
 #ifdef __cplusplus
@@ -31,4 +31,4 @@ struct ac_llm {
 }
 #endif
 
-#endif /* AGENTC_LLM_INTERNAL_H */
+#endif /* ARC_LLM_INTERNAL_H */

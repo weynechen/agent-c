@@ -3,27 +3,27 @@
  * @brief Agent implementation with arena memory management
  */
 
-#include "agentc/agent.h"
-#include "agentc/arena.h"
-#include "agentc/llm.h"
-#include "agentc/tool.h"
-#include "agentc/message.h"
-#include "agentc/log.h"
-#include "agentc/platform.h"
+#include "arc/agent.h"
+#include "arc/arena.h"
+#include "arc/llm.h"
+#include "arc/tool.h"
+#include "arc/message.h"
+#include "arc/log.h"
+#include "arc/platform.h"
 #include "agent_hooks_internal.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 
 /* Use platform-specific default from platform.h */
-#define DEFAULT_ARENA_SIZE AGENTC_AGENT_ARENA_SIZE
+#define DEFAULT_ARENA_SIZE ARC_AGENT_ARENA_SIZE
 
 /*============================================================================
  * Forward Declarations
  *============================================================================*/
 
 /* Session internal API */
-agentc_err_t ac_session_add_agent(struct ac_session *session, ac_agent_t *agent);
+arc_err_t ac_session_add_agent(struct ac_session *session, ac_agent_t *agent);
 
 /*============================================================================
  * Agent Private Data
@@ -34,19 +34,19 @@ typedef struct {
     ac_llm_t *llm;
     ac_tool_registry_t *tools;
     struct ac_session *session;
-    
+
     /* Message history (stored in arena) */
     ac_message_t *messages;
     ac_message_t *messages_tail;  /* Tail pointer for O(1) append */
     size_t message_count;
-    
+
     const char *name;
     const char *instructions;
     int max_iterations;
-    
+
     /* Cached tools schema (built once at creation) */
     char *cached_tools_schema;
-    
+
     /* Statistics for hooks */
     uint64_t run_start_time_ms;
     int total_prompt_tokens;
@@ -69,9 +69,9 @@ static void agent_append_message(agent_priv_t *priv, ac_message_t *message) {
     if (!priv || !message) {
         return;
     }
-    
+
     message->next = NULL;
-    
+
     if (!priv->messages) {
         priv->messages = message;
         priv->messages_tail = message;
@@ -101,21 +101,21 @@ static char *execute_tool_call(agent_priv_t *priv, const ac_tool_call_t *call) {
     if (!call || !call->name) {
         return strdup("{\"error\":\"Invalid tool call\"}");
     }
-    
+
     if (!priv->tools) {
         AC_LOG_WARN("No tool registry configured");
         return strdup("{\"error\":\"No tools available\"}");
     }
-    
+
     ac_tool_ctx_t ctx = {
         .session_id = NULL,
         .working_dir = NULL,
         .user_data = NULL
     };
-    
-    AC_LOG_INFO("Executing tool: %s(%s)", call->name, 
+
+    AC_LOG_INFO("Executing tool: %s(%s)", call->name,
                 call->arguments ? call->arguments : "{}");
-    
+
     /* Hook: tool start */
     uint64_t tool_start_ms = ac_platform_timestamp_ms();
     {
@@ -127,7 +127,7 @@ static char *execute_tool_call(agent_priv_t *priv, const ac_tool_call_t *call) {
         };
         AC_HOOK_CALL(ac_hook_call_tool_start, &hook_info);
     }
-    
+
     /* Execute */
     char *result = ac_tool_registry_call(
         priv->tools,
@@ -135,9 +135,9 @@ static char *execute_tool_call(agent_priv_t *priv, const ac_tool_call_t *call) {
         call->arguments ? call->arguments : "{}",
         &ctx
     );
-    
+
     AC_LOG_DEBUG("Tool %s returned: %s", call->name, result ? result : "NULL");
-    
+
     /* Hook: tool end */
     uint64_t tool_end_ms = ac_platform_timestamp_ms();
     {
@@ -151,7 +151,7 @@ static char *execute_tool_call(agent_priv_t *priv, const ac_tool_call_t *call) {
         };
         AC_HOOK_CALL(ac_hook_call_tool_end, &hook_info);
     }
-    
+
     return result ? result : strdup("{\"error\":\"Tool returned NULL\"}");
 }
 
@@ -163,10 +163,10 @@ static ac_tool_call_t *copy_tool_calls_to_arena(arena_t *arena, ac_tool_call_t *
     if (!arena || !calls) {
         return NULL;
     }
-    
+
     ac_tool_call_t *first = NULL;
     ac_tool_call_t *last = NULL;
-    
+
     for (ac_tool_call_t *call = calls; call; call = call->next) {
         ac_tool_call_t *copy = ac_tool_call_create(
             arena, call->id, call->name, call->arguments
@@ -177,7 +177,7 @@ static ac_tool_call_t *copy_tool_calls_to_arena(arena_t *arena, ac_tool_call_t *
             last = copy;
         }
     }
-    
+
     return first;
 }
 
@@ -189,14 +189,14 @@ static ac_agent_result_t *agent_run_impl(agent_priv_t *priv, const char *message
     if (!priv || !priv->arena || !priv->llm) {
         return NULL;
     }
-    
+
     /* Initialize run statistics */
     priv->run_start_time_ms = ac_platform_timestamp_ms();
     priv->total_prompt_tokens = 0;
     priv->total_completion_tokens = 0;
-    
+
     size_t tool_count = priv->tools ? ac_tool_registry_count(priv->tools) : 0;
-    
+
     /* Hook: run start */
     {
         ac_hook_run_start_t hook_info = {
@@ -208,7 +208,7 @@ static ac_agent_result_t *agent_run_impl(agent_priv_t *priv, const char *message
         };
         AC_HOOK_CALL(ac_hook_call_run_start, &hook_info);
     }
-    
+
     /* Add system message if this is the first message */
     if (!priv->messages && priv->instructions) {
         ac_message_t *sys_msg = ac_message_create(
@@ -218,7 +218,7 @@ static ac_agent_result_t *agent_run_impl(agent_priv_t *priv, const char *message
             agent_append_message(priv, sys_msg);
         }
     }
-    
+
     /* Add user message to history */
     ac_message_t *user_msg = ac_message_create(priv->arena, AC_ROLE_USER, message);
     if (!user_msg) {
@@ -226,20 +226,20 @@ static ac_agent_result_t *agent_run_impl(agent_priv_t *priv, const char *message
         return NULL;
     }
     agent_append_message(priv, user_msg);
-    
+
     AC_LOG_DEBUG("Added user message, total messages: %zu", priv->message_count);
-    
+
     /* Use cached tools schema */
     char *tools_schema = priv->cached_tools_schema;
-    
+
     /* ReACT loop */
     char *final_content = NULL;
     int iteration = 0;
-    
+
     while (iteration < priv->max_iterations) {
         iteration++;
         AC_LOG_DEBUG("ReACT iteration %d/%d", iteration, priv->max_iterations);
-        
+
         /* Hook: iteration start */
         {
             ac_hook_iter_t hook_info = {
@@ -249,9 +249,9 @@ static ac_agent_result_t *agent_run_impl(agent_priv_t *priv, const char *message
             };
             AC_HOOK_CALL(ac_hook_call_iter_start, &hook_info);
         }
-        
+
         uint64_t llm_start_ms = ac_platform_timestamp_ms();
-        
+
         /* Hook: LLM request - pass raw pointers, no JSON serialization here */
         {
             ac_hook_llm_request_t hook_info = {
@@ -263,20 +263,20 @@ static ac_agent_result_t *agent_run_impl(agent_priv_t *priv, const char *message
             };
             AC_HOOK_CALL(ac_hook_call_llm_request, &hook_info);
         }
-        
+
         /* Call LLM */
         ac_chat_response_t response;
         ac_chat_response_init(&response);
-        
-        agentc_err_t err = ac_llm_chat_with_tools(
+
+        arc_err_t err = ac_llm_chat_with_tools(
             priv->llm,
             priv->messages,
             tools_schema,
             &response
         );
-        
+
         uint64_t llm_end_ms = ac_platform_timestamp_ms();
-        
+
         /* Hook: LLM response - pass raw pointer, no JSON serialization here */
         {
             ac_hook_llm_response_t hook_info = {
@@ -292,51 +292,51 @@ static ac_agent_result_t *agent_run_impl(agent_priv_t *priv, const char *message
             };
             AC_HOOK_CALL(ac_hook_call_llm_response, &hook_info);
         }
-        
+
         /* Accumulate token usage */
         priv->total_prompt_tokens += response.prompt_tokens;
         priv->total_completion_tokens += response.completion_tokens;
-        
-        if (err != AGENTC_OK) {
+
+        if (err != ARC_OK) {
             AC_LOG_ERROR("LLM chat failed: %d", err);
             ac_chat_response_free(&response);
             return NULL;
         }
-        
+
         /* Check if there are tool calls */
         if (ac_chat_response_has_tool_calls(&response)) {
             AC_LOG_INFO("LLM requested %d tool call(s)", response.tool_call_count);
-            
+
             /* Copy tool calls to arena and add assistant message */
             ac_tool_call_t *arena_calls = copy_tool_calls_to_arena(
                 priv->arena, response.tool_calls
             );
-            
+
             ac_message_t *asst_msg = ac_message_create_with_tool_calls(
                 priv->arena, response.content, arena_calls
             );
-            
+
             if (asst_msg) {
                 agent_append_message(priv, asst_msg);
             }
-            
+
             /* Execute each tool call and add results */
             for (ac_tool_call_t *call = response.tool_calls; call; call = call->next) {
                 char *result = execute_tool_call(priv, call);
-                
+
                 ac_message_t *tool_msg = ac_message_create_tool_result(
                     priv->arena,
                     call->id,
                     result ? result : "{\"error\":\"Tool execution failed\"}"
                 );
-                
+
                 if (tool_msg) {
                     agent_append_message(priv, tool_msg);
                 }
-                
+
                 if (result) free(result);
             }
-            
+
             /* Hook: iteration end */
             {
                 ac_hook_iter_t hook_info = {
@@ -346,15 +346,15 @@ static ac_agent_result_t *agent_run_impl(agent_priv_t *priv, const char *message
                 };
                 AC_HOOK_CALL(ac_hook_call_iter_end, &hook_info);
             }
-            
+
             ac_chat_response_free(&response);
             continue;
         }
-        
+
         /* No tool calls - we have the final response */
         if (response.content) {
             final_content = arena_strdup(priv->arena, response.content);
-            
+
             ac_message_t *asst_msg = ac_message_create(
                 priv->arena, AC_ROLE_ASSISTANT, response.content
             );
@@ -362,7 +362,7 @@ static ac_agent_result_t *agent_run_impl(agent_priv_t *priv, const char *message
                 agent_append_message(priv, asst_msg);
             }
         }
-        
+
         /* Hook: iteration end */
         {
             ac_hook_iter_t hook_info = {
@@ -372,15 +372,15 @@ static ac_agent_result_t *agent_run_impl(agent_priv_t *priv, const char *message
             };
             AC_HOOK_CALL(ac_hook_call_iter_end, &hook_info);
         }
-        
+
         ac_chat_response_free(&response);
         break;
     }
-    
+
     if (iteration >= priv->max_iterations && !final_content) {
         AC_LOG_WARN("ReACT loop reached max iterations (%d)", priv->max_iterations);
     }
-    
+
     /* Hook: run end */
     uint64_t run_end_ms = ac_platform_timestamp_ms();
     {
@@ -394,19 +394,19 @@ static ac_agent_result_t *agent_run_impl(agent_priv_t *priv, const char *message
         };
         AC_HOOK_CALL(ac_hook_call_run_end, &hook_info);
     }
-    
+
     /* Allocate result from agent's arena */
     ac_agent_result_t *result = (ac_agent_result_t *)arena_alloc(
         priv->arena, sizeof(ac_agent_result_t)
     );
-    
+
     if (!result) {
         AC_LOG_ERROR("Failed to allocate result from arena");
         return NULL;
     }
-    
+
     result->content = final_content;
-    
+
     AC_LOG_DEBUG("Agent run completed after %d iterations, total messages: %zu",
                  iteration, priv->message_count);
     return result;
@@ -421,20 +421,20 @@ ac_agent_t *ac_agent_create(ac_session_t *session, const ac_agent_params_t *para
         AC_LOG_ERROR("Invalid arguments to ac_agent_create");
         return NULL;
     }
-    
+
     ac_agent_t *agent = (ac_agent_t *)calloc(1, sizeof(ac_agent_t));
     if (!agent) {
         AC_LOG_ERROR("Failed to allocate agent");
         return NULL;
     }
-    
+
     agent_priv_t *priv = (agent_priv_t *)calloc(1, sizeof(agent_priv_t));
     if (!priv) {
         AC_LOG_ERROR("Failed to allocate agent private data");
         free(agent);
         return NULL;
     }
-    
+
     priv->arena = arena_create(DEFAULT_ARENA_SIZE);
     if (!priv->arena) {
         AC_LOG_ERROR("Failed to create arena");
@@ -442,24 +442,24 @@ ac_agent_t *ac_agent_create(ac_session_t *session, const ac_agent_params_t *para
         free(agent);
         return NULL;
     }
-    
+
     priv->session = session;
     priv->messages = NULL;
     priv->messages_tail = NULL;
     priv->message_count = 0;
     priv->cached_tools_schema = NULL;
-    
+
     if (params->name) {
         priv->name = arena_strdup(priv->arena, params->name);
     }
-    
+
     if (params->instructions) {
         priv->instructions = arena_strdup(priv->arena, params->instructions);
     }
-    
-    priv->max_iterations = params->max_iterations > 0 ? 
+
+    priv->max_iterations = params->max_iterations > 0 ?
         params->max_iterations : AC_AGENT_DEFAULT_MAX_ITERATIONS;
-    
+
     priv->llm = ac_llm_create(priv->arena, &params->llm);
     if (!priv->llm) {
         AC_LOG_ERROR("Failed to create LLM");
@@ -468,36 +468,36 @@ ac_agent_t *ac_agent_create(ac_session_t *session, const ac_agent_params_t *para
         free(agent);
         return NULL;
     }
-    
+
     priv->tools = params->tools;
-    
+
     if (priv->tools) {
         size_t tool_count = ac_tool_registry_count(priv->tools);
         AC_LOG_DEBUG("Agent configured with %zu tools", tool_count);
-        
+
         /* Build and cache tools schema once at creation */
         priv->cached_tools_schema = build_tools_schema(priv);
         if (priv->cached_tools_schema) {
-            AC_LOG_DEBUG("Cached tools schema (%zu bytes)", 
+            AC_LOG_DEBUG("Cached tools schema (%zu bytes)",
                          strlen(priv->cached_tools_schema));
         }
     }
-    
+
     agent->priv = priv;
-    
-    if (ac_session_add_agent(session, agent) != AGENTC_OK) {
+
+    if (ac_session_add_agent(session, agent) != ARC_OK) {
         AC_LOG_ERROR("Failed to add agent to session");
         arena_destroy(priv->arena);
         free(priv);
         free(agent);
         return NULL;
     }
-    
+
     AC_LOG_INFO("Agent created: %s (arena=%zuKB, max_iter=%d)",
                 priv->name ? priv->name : "unnamed",
                 DEFAULT_ARENA_SIZE / 1024,
                 priv->max_iterations);
-    
+
     return agent;
 }
 
@@ -506,7 +506,7 @@ ac_agent_result_t *ac_agent_run(ac_agent_t *agent, const char *message) {
         AC_LOG_ERROR("Invalid arguments to ac_agent_run");
         return NULL;
     }
-    
+
     return agent_run_impl(agent->priv, message);
 }
 
@@ -514,25 +514,25 @@ void ac_agent_destroy(ac_agent_t *agent) {
     if (!agent) {
         return;
     }
-    
+
     agent_priv_t *priv = agent->priv;
     if (priv) {
         if (priv->llm) {
             ac_llm_cleanup(priv->llm);
         }
-        
+
         /* Free cached tools schema */
         if (priv->cached_tools_schema) {
             free(priv->cached_tools_schema);
             priv->cached_tools_schema = NULL;
         }
-        
+
         if (priv->arena) {
             AC_LOG_DEBUG("Destroying agent arena");
             arena_destroy(priv->arena);
         }
         free(priv);
     }
-    
+
     free(agent);
 }

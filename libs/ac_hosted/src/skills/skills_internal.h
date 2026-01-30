@@ -3,10 +3,10 @@
  * @brief Skills system internal structures and functions
  */
 
-#ifndef AGENTC_SKILLS_INTERNAL_H
-#define AGENTC_SKILLS_INTERNAL_H
+#ifndef ARC_SKILLS_INTERNAL_H
+#define ARC_SKILLS_INTERNAL_H
 
-#include <agentc/skills.h>
+#include <arc/skills.h>
 
 /*============================================================================
  * Internal Structures
@@ -19,7 +19,7 @@ struct ac_skills {
     ac_skill_t *head;               /* Linked list of skills */
     size_t count;                   /* Total discovered skills */
     size_t enabled_count;           /* Currently enabled skills */
-    
+
     /* Script executor (reserved for future use) */
     ac_skill_script_fn script_executor;
     void *script_user_data;
@@ -38,9 +38,9 @@ struct ac_skills {
  * @param content     Full file content
  * @param meta        Output metadata structure (caller allocates)
  * @param body_start  Output pointer to markdown body start (within content)
- * @return AGENTC_OK on success, AGENTC_ERR_PARSE on parse error
+ * @return ARC_OK on success, ARC_ERR_PARSE on parse error
  */
-agentc_err_t skill_parse_frontmatter(
+arc_err_t skill_parse_frontmatter(
     const char *content,
     ac_skill_meta_t *meta,
     const char **body_start
@@ -117,4 +117,4 @@ char *skill_read_file(const char *filepath);
  */
 bool skill_file_exists(const char *filepath);
 
-#endif /* AGENTC_SKILLS_INTERNAL_H */
+#endif /* ARC_SKILLS_INTERNAL_H */

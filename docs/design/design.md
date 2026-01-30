@@ -1,4 +1,4 @@
-agentc 是一个面向嵌入式与受限系统的 C 语言 Agent Runtime。
+arc 是一个面向嵌入式与受限系统的 C 语言 Agent Runtime。
 项目目标是在仅依赖 socket / http / 文件等基础能力的前提下，将 传统 LLM Agent（LangChain / OpenAI Agents） 的核心能力落地到 C-only 平台。
 
 # 出发点
@@ -24,7 +24,7 @@ LLM API、Prompt Manager、Tool Calling、Chat Memory、MCP/ACP、Agent Loop，
 并通过平台抽象层保证跨平台可移植性。
 
 ## 底层网络模块
-采用分层设计，agentc 封装接口层。
+采用分层设计，arc 封装接口层。
 对于嵌入式的平台来说，backend采用mongoose。
 
     > mongoose ，一个c语言的跨平台库。

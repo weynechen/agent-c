@@ -9,9 +9,9 @@
 #ifndef MCP_INTERNAL_H
 #define MCP_INTERNAL_H
 
-#include "agentc/mcp.h"
-#include "agentc/arena.h"
-#include "agentc/log.h"
+#include "arc/mcp.h"
+#include "arc/arena.h"
+#include "arc/log.h"
 #include "http_client.h"
 #include "cJSON.h"
 
@@ -45,7 +45,7 @@ typedef struct {
      * For HTTP: no-op (stateless)
      * For SSE: GET request to establish SSE stream and get endpoint
      */
-    agentc_err_t (*connect)(mcp_transport_t *t);
+    arc_err_t (*connect)(mcp_transport_t *t);
 
     /**
      * @brief Send JSON-RPC request and wait for response
@@ -54,9 +54,9 @@ typedef struct {
      * @param request_json  JSON-RPC request string
      * @param request_id    Request ID for matching response
      * @param response_json Output: response string (caller must free)
-     * @return AGENTC_OK on success
+     * @return ARC_OK on success
      */
-    agentc_err_t (*request)(
+    arc_err_t (*request)(
         mcp_transport_t *t,
         const char *request_json,
         int request_id,
@@ -81,7 +81,7 @@ typedef struct {
  */
 struct mcp_transport {
     const mcp_transport_ops_t *ops;
-    agentc_http_client_t *http;
+    arc_http_client_t *http;
     arena_t *arena;
 
     /* Configuration */
@@ -104,7 +104,7 @@ struct mcp_transport {
  */
 mcp_transport_t *mcp_http_create(
     arena_t *arena,
-    agentc_http_client_t *http,
+    arc_http_client_t *http,
     const ac_mcp_config_t *config
 );
 
@@ -113,7 +113,7 @@ mcp_transport_t *mcp_http_create(
  */
 mcp_transport_t *mcp_sse_create(
     arena_t *arena,
-    agentc_http_client_t *http,
+    arc_http_client_t *http,
     const ac_mcp_config_t *config
 );
 
@@ -133,28 +133,28 @@ static inline void mcp_transport_set_error(mcp_transport_t *t, const char *fmt, 
  * Helper: Build HTTP Headers
  *============================================================================*/
 
-static inline agentc_http_header_t *mcp_build_headers(
+static inline arc_http_header_t *mcp_build_headers(
     mcp_transport_t *t,
     const char *content_type,
     const char *accept
 ) {
-    agentc_http_header_t *headers = NULL;
+    arc_http_header_t *headers = NULL;
 
     if (content_type) {
-        agentc_http_header_t *ct = agentc_http_header_create("Content-Type", content_type);
-        agentc_http_header_append(&headers, ct);
+        arc_http_header_t *ct = arc_http_header_create("Content-Type", content_type);
+        arc_http_header_append(&headers, ct);
     }
 
     if (accept) {
-        agentc_http_header_t *acc = agentc_http_header_create("Accept", accept);
-        agentc_http_header_append(&headers, acc);
+        arc_http_header_t *acc = arc_http_header_create("Accept", accept);
+        arc_http_header_append(&headers, acc);
     }
 
     if (t->api_key) {
         char auth_value[512];
         snprintf(auth_value, sizeof(auth_value), "Bearer %s", t->api_key);
-        agentc_http_header_t *auth = agentc_http_header_create("Authorization", auth_value);
-        agentc_http_header_append(&headers, auth);
+        arc_http_header_t *auth = arc_http_header_create("Authorization", auth_value);
+        arc_http_header_append(&headers, auth);
     }
 
     return headers;

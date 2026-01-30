@@ -153,7 +153,7 @@ typedef struct {
     volatile int sse_connected;  /* 0=waiting, 1=connected, -1=error */
 
     /* HTTP client for POST requests (separate from SSE stream) */
-    agentc_http_client_t *post_http;
+    arc_http_client_t *post_http;
 
     /* Response queue (protected by mutex) */
     pthread_mutex_t mutex;
@@ -242,12 +242,12 @@ static void *sse_thread_func(void *arg) {
         sse_parser_init(&ctx.parser, sse_on_event, sse);
 
         /* Build headers */
-        agentc_http_header_t *headers = mcp_build_headers(&sse->base, NULL, "text/event-stream");
+        arc_http_header_t *headers = mcp_build_headers(&sse->base, NULL, "text/event-stream");
 
-        agentc_http_stream_request_t req = {
+        arc_http_stream_request_t req = {
             .base = {
                 .url = sse->base.server_url,
-                .method = AGENTC_HTTP_GET,
+                .method = ARC_HTTP_GET,
                 .headers = headers,
                 .timeout_ms = 0,  /* No timeout - keep connection open */
                 .verify_ssl = sse->base.verify_ssl
@@ -256,30 +256,30 @@ static void *sse_thread_func(void *arg) {
             .user_data = &ctx
         };
 
-        agentc_http_response_t resp = {0};
+        arc_http_response_t resp = {0};
 
         AC_LOG_DEBUG("SSE thread: connecting to %s", sse->base.server_url);
 
-        agentc_err_t err = agentc_http_request_stream(sse->base.http, &req, &resp);
+        arc_err_t err = arc_http_request_stream(sse->base.http, &req, &resp);
 
-        agentc_http_header_free(headers);
+        arc_http_header_free(headers);
         sse_parser_free(&ctx.parser);
 
-        agentc_http_response_free(&resp);
+        arc_http_response_free(&resp);
 
         /* If we're shutting down, exit cleanly */
         if (!sse->sse_running) {
             break;
         }
 
-        if (err != AGENTC_OK) {
+        if (err != ARC_OK) {
             snprintf(sse->sse_error, sizeof(sse->sse_error),
                      "SSE connection failed: %s",
                      resp.error_msg ? resp.error_msg : ac_strerror(err));
-            
+
             /* Timeout during idle is normal for long-running connections.
              * Log as DEBUG since we will automatically reconnect. */
-            if (err == AGENTC_ERR_TIMEOUT) {
+            if (err == ARC_ERR_TIMEOUT) {
                 AC_LOG_DEBUG("SSE: connection timeout, will reconnect");
             } else {
                 AC_LOG_WARN("SSE: %s (will reconnect)", sse->sse_error);
@@ -327,11 +327,11 @@ static char *extract_base_url(arena_t *arena, const char *url) {
  * Transport Operations
  *============================================================================*/
 
-static agentc_err_t sse_connect(mcp_transport_t *t) {
+static arc_err_t sse_connect(mcp_transport_t *t) {
     mcp_sse_transport_t *sse = (mcp_sse_transport_t *)t;
 
     if (sse->sse_running) {
-        return AGENTC_OK;
+        return ARC_OK;
     }
 
     AC_LOG_INFO("SSE: Starting connection to %s", t->server_url);
@@ -346,7 +346,7 @@ static agentc_err_t sse_connect(mcp_transport_t *t) {
     if (pthread_create(&sse->sse_thread, NULL, sse_thread_func, sse) != 0) {
         mcp_transport_set_error(t, "Failed to create SSE thread");
         sse->sse_running = 0;
-        return AGENTC_ERR_MEMORY;
+        return ARC_ERR_MEMORY;
     }
 
     /* Wait for endpoint (polling) */
@@ -362,23 +362,23 @@ static agentc_err_t sse_connect(mcp_transport_t *t) {
         mcp_transport_set_error(t, "Timeout waiting for SSE endpoint");
         sse->sse_running = 0;
         pthread_join(sse->sse_thread, NULL);
-        return AGENTC_ERR_TIMEOUT;
+        return ARC_ERR_TIMEOUT;
     }
 
     if (sse->sse_connected < 0) {
         mcp_transport_set_error(t, "%s", sse->sse_error);
         sse->sse_running = 0;
         pthread_join(sse->sse_thread, NULL);
-        return AGENTC_ERR_HTTP;
+        return ARC_ERR_HTTP;
     }
 
     t->connected = 1;
     AC_LOG_INFO("SSE: Connected, endpoint = %s", sse->endpoint);
 
-    return AGENTC_OK;
+    return ARC_OK;
 }
 
-static agentc_err_t sse_request(
+static arc_err_t sse_request(
     mcp_transport_t *t,
     const char *request_json,
     int request_id,
@@ -388,7 +388,7 @@ static agentc_err_t sse_request(
 
     if (!t->connected || !sse->endpoint) {
         mcp_transport_set_error(t, "Not connected");
-        return AGENTC_ERR_NOT_CONNECTED;
+        return ARC_ERR_NOT_CONNECTED;
     }
 
     /* Build full endpoint URL */
@@ -396,22 +396,22 @@ static agentc_err_t sse_request(
     if (sse->endpoint[0] == '/') {
         size_t len = strlen(sse->base_url) + strlen(sse->endpoint) + 1;
         full_url = (char *)malloc(len);
-        if (!full_url) return AGENTC_ERR_MEMORY;
+        if (!full_url) return ARC_ERR_MEMORY;
         snprintf(full_url, len, "%s%s", sse->base_url, sse->endpoint);
     } else {
         full_url = strdup(sse->endpoint);
-        if (!full_url) return AGENTC_ERR_MEMORY;
+        if (!full_url) return ARC_ERR_MEMORY;
     }
 
     AC_LOG_DEBUG("SSE POST: %s (id=%d)", full_url, request_id);
 
     /* Build headers */
-    agentc_http_header_t *headers = mcp_build_headers(t, "application/json", "text/event-stream");
+    arc_http_header_t *headers = mcp_build_headers(t, "application/json", "text/event-stream");
 
     /* POST request */
-    agentc_http_request_t req = {
+    arc_http_request_t req = {
         .url = full_url,
-        .method = AGENTC_HTTP_POST,
+        .method = ARC_HTTP_POST,
         .headers = headers,
         .body = request_json,
         .body_len = strlen(request_json),
@@ -419,16 +419,16 @@ static agentc_err_t sse_request(
         .verify_ssl = t->verify_ssl
     };
 
-    agentc_http_response_t resp = {0};
-    agentc_err_t err = agentc_http_request(sse->post_http, &req, &resp);
+    arc_http_response_t resp = {0};
+    arc_err_t err = arc_http_request(sse->post_http, &req, &resp);
 
-    agentc_http_header_free(headers);
+    arc_http_header_free(headers);
     free(full_url);
 
-    if (err != AGENTC_OK) {
+    if (err != ARC_OK) {
         mcp_transport_set_error(t, "POST failed: %s",
                                  resp.error_msg ? resp.error_msg : ac_strerror(err));
-        agentc_http_response_free(&resp);
+        arc_http_response_free(&resp);
         return err;
     }
 
@@ -443,20 +443,20 @@ static agentc_err_t sse_request(
                 AC_LOG_DEBUG("SSE: Got direct JSON response in POST body");
                 *response_json = strdup(resp.body);
                 cJSON_Delete(json);
-                agentc_http_response_free(&resp);
-                return *response_json ? AGENTC_OK : AGENTC_ERR_MEMORY;
+                arc_http_response_free(&resp);
+                return *response_json ? ARC_OK : ARC_ERR_MEMORY;
             }
             cJSON_Delete(json);
         }
     }
 
-    agentc_http_response_free(&resp);
+    arc_http_response_free(&resp);
 
     /* For notifications (request_id == 0), no response is expected */
     if (request_id == 0) {
         AC_LOG_DEBUG("SSE: Notification sent (no response expected)");
         *response_json = NULL;
-        return AGENTC_OK;
+        return ARC_OK;
     }
 
     /* Wait for response via SSE stream (polling) */
@@ -481,7 +481,7 @@ static agentc_err_t sse_request(
 
                 pthread_mutex_unlock(&sse->mutex);
                 AC_LOG_DEBUG("SSE: Got response id=%d", request_id);
-                return AGENTC_OK;
+                return ARC_OK;
             }
         }
         pthread_mutex_unlock(&sse->mutex);
@@ -489,7 +489,7 @@ static agentc_err_t sse_request(
         /* Check if SSE thread died */
         if (!sse->sse_running || sse->sse_connected < 0) {
             mcp_transport_set_error(t, "SSE connection lost");
-            return AGENTC_ERR_NOT_CONNECTED;
+            return ARC_ERR_NOT_CONNECTED;
         }
 
         usleep(poll_interval * 1000);
@@ -497,7 +497,7 @@ static agentc_err_t sse_request(
     }
 
     mcp_transport_set_error(t, "Timeout waiting for response id=%d", request_id);
-    return AGENTC_ERR_TIMEOUT;
+    return ARC_ERR_TIMEOUT;
 }
 
 static void sse_disconnect(mcp_transport_t *t) {
@@ -528,7 +528,7 @@ static void sse_destroy(mcp_transport_t *t) {
     mcp_sse_transport_t *sse = (mcp_sse_transport_t *)t;
 
     if (sse->post_http) {
-        agentc_http_client_destroy(sse->post_http);
+        arc_http_client_destroy(sse->post_http);
         sse->post_http = NULL;
     }
 
@@ -557,7 +557,7 @@ static const mcp_transport_ops_t sse_ops = {
 
 mcp_transport_t *mcp_sse_create(
     arena_t *arena,
-    agentc_http_client_t *http,
+    arc_http_client_t *http,
     const ac_mcp_config_t *config
 ) {
     mcp_sse_transport_t *t = (mcp_sse_transport_t *)arena_alloc(
@@ -580,16 +580,16 @@ mcp_transport_t *mcp_sse_create(
     t->base_url = extract_base_url(arena, config->server_url);
 
     /* Create separate HTTP client for POST requests */
-    agentc_http_client_config_t http_cfg = {
+    arc_http_client_config_t http_cfg = {
         .default_timeout_ms = t->base.timeout_ms
     };
-    if (agentc_http_client_create(&http_cfg, &t->post_http) != AGENTC_OK) {
+    if (arc_http_client_create(&http_cfg, &t->post_http) != ARC_OK) {
         AC_LOG_ERROR("Failed to create POST HTTP client");
         return NULL;
     }
 
     if (!t->base.server_url || !t->base_url) {
-        if (t->post_http) agentc_http_client_destroy(t->post_http);
+        if (t->post_http) arc_http_client_destroy(t->post_http);
         return NULL;
     }
 

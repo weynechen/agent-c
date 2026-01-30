@@ -1,4 +1,4 @@
-# AgentC 架构设计 v2
+# ArC 架构设计 v2
 
 ## 1. 设计目标
 
@@ -45,8 +45,8 @@
 
 ```
 agent-c/
-├── agentc_core/              # 核心库（所有平台必需）
-│   ├── include/agentc/       # 公共API头文件
+├── arc_core/              # 核心库（所有平台必需）
+│   ├── include/arc/       # 公共API头文件
 │   │   ├── agent.h
 │   │   ├── llm.h
 │   │   ├── tool.h
@@ -67,7 +67,7 @@ agent-c/
 │   │   └── cjson.c          # 内置JSON库
 │   └── port/                 # 移植接口
 │       ├── README.md         # 移植指南
-│       ├── agentc_port.h     # 移植接口定义
+│       ├── arc_port.h     # 移植接口定义
 │       ├── posix/            # Linux/macOS原生实现
 │       │   └── log_posix.c  # POSIX日志实现
 │       ├── windows/          # Windows POSIX shim
@@ -75,8 +75,8 @@ agent-c/
 │       └── freertos/         # FreeRTOS POSIX实现
 │           └── log_freertos.c # FreeRTOS日志实现
 │
-├── agentc_hosted/            # 完整OS组件（可选）
-│   ├── include/agentc/
+├── arc_hosted/            # 完整OS组件（可选）
+│   ├── include/arc/
 │   │   ├── dotenv.h          # 环境变量加载
 │   │   ├── args.h            # 命令行参数解析
 │   │   ├── markdown.h        # Markdown渲染
@@ -116,7 +116,7 @@ agent-c/
 └── CMakeLists.txt            # 根构建配置
 ```
 
-## 3. 核心组件 (agentc_core)
+## 3. 核心组件 (arc_core)
 
 ### 3.1 组件职责
 
@@ -157,7 +157,7 @@ void ac_llm_destroy(ac_llm_t* llm);
 
 **目录结构**：
 ```
-agentc_core/src/llm/
+arc_core/src/llm/
 ├── llm.c                # LLM主接口和provider路由
 ├── openai_api.c         # OpenAI兼容API (OpenAI, DeepSeek, 通义千问等)
 ├── anthropic_api.c      # Anthropic Claude API
@@ -170,7 +170,7 @@ agentc_core/src/llm/
 **职责**：工具管理、注册、调用和JSON Schema生成
 
 **设计思路**：
-- 使用`@agentc_tool`注释标记工具函数
+- 使用`@arc_tool`注释标记工具函数
 - MOC工具扫描并生成注册代码
 - 支持工具分组（tools_group）
 - 自动生成JSON Schema
@@ -275,29 +275,29 @@ void ac_agent_destroy(ac_agent_t* agent);
 typedef struct {
     const char* name;
     const char* value;
-    struct agentc_http_header* next;
-} agentc_http_header_t;
+    struct arc_http_header* next;
+} arc_http_header_t;
 
 typedef struct {
     int status_code;
-    agentc_http_header_t* headers;
+    arc_http_header_t* headers;
     char* body;
     size_t body_size;
     char* error_msg;
-} agentc_http_response_t;
+} arc_http_response_t;
 
-typedef struct agentc_http_client agentc_http_client_t;
+typedef struct arc_http_client arc_http_client_t;
 
-agentc_http_client_t* agentc_http_client_create(void);
-agentc_http_response_t* agentc_http_post(
-    agentc_http_client_t* client,
+arc_http_client_t* arc_http_client_create(void);
+arc_http_response_t* arc_http_post(
+    arc_http_client_t* client,
     const char* url,
-    const agentc_http_header_t* headers,
+    const arc_http_header_t* headers,
     const char* body,
     size_t body_size
 );
-void agentc_http_response_free(agentc_http_response_t* response);
-void agentc_http_client_destroy(agentc_http_client_t* client);
+void arc_http_response_free(arc_http_response_t* response);
+void arc_http_client_destroy(arc_http_client_t* client);
 ```
 
 ### 3.7 Log 组件
@@ -425,7 +425,7 @@ nanosleep()
    - 默认使用标准malloc/free
    - 可通过宏覆盖
 
-## 5. Hosted组件 (agentc_hosted)
+## 5. Hosted组件 (arc_hosted)
 
 ### 5.1 设计目标
 
@@ -477,7 +477,7 @@ UTF-8字符串处理工具函数。
 
 ### 5.3 依赖组件
 
-Hosted特性的第三方依赖统一放在`agentc_hosted/components/`下：
+Hosted特性的第三方依赖统一放在`arc_hosted/components/`下：
 - **pcre2**：正则表达式（Markdown渲染使用）
 - 未来可能添加：readline、ncurses等
 
@@ -485,7 +485,7 @@ Hosted特性的第三方依赖统一放在`agentc_hosted/components/`下：
 
 ### 6.1 MOC - Meta-Object Compiler
 
-**作用**：扫描`@agentc_tool`注释，自动生成工具注册代码和JSON Schema
+**作用**：扫描`@arc_tool`注释，自动生成工具注册代码和JSON Schema
 
 **工作流程**：
 ```
@@ -503,7 +503,7 @@ Hosted特性的第三方依赖统一放在`agentc_hosted/components/`下：
 **用户代码示例**：
 ```c
 /**
- * @agentc_tool
+ * @arc_tool
  * @tools_group: weather
  * @description: Get current weather for a city
  */
@@ -536,11 +536,11 @@ char* get_weather(const char* city);
 
 **构建选项**：
 ```cmake
-AGENTC_PROFILE=<minimal|hosted|embedded>  # 构建配置文件
-AGENTC_BUILD_TOOLS=<ON|OFF>               # 是否构建开发工具
-AGENTC_BUILD_EXAMPLES=<ON|OFF>            # 是否构建示例
-AGENTC_BUILD_TESTS=<ON|OFF>               # 是否构建测试
-AGENTC_PORT=<posix|windows|freertos>      # 移植目标
+ARC_PROFILE=<minimal|hosted|embedded>  # 构建配置文件
+ARC_BUILD_TOOLS=<ON|OFF>               # 是否构建开发工具
+ARC_BUILD_EXAMPLES=<ON|OFF>            # 是否构建示例
+ARC_BUILD_TESTS=<ON|OFF>               # 是否构建测试
+ARC_PORT=<posix|windows|freertos>      # 移植目标
 ```
 
 ### 7.2 平台检测
@@ -575,9 +575,9 @@ CMake自动检测平台并选择对应的移植实现：
 
 支持自定义内存分配器（嵌入式需求）：
 ```c
-#define AGENTC_MALLOC(size)    custom_malloc(size)
-#define AGENTC_FREE(ptr)       custom_free(ptr)
-#define AGENTC_REALLOC(p, s)   custom_realloc(p, s)
+#define ARC_MALLOC(size)    custom_malloc(size)
+#define ARC_FREE(ptr)       custom_free(ptr)
+#define ARC_REALLOC(p, s)   custom_realloc(p, s)
 ```
 
 ## 9. 线程模型
@@ -610,12 +610,12 @@ CMake自动检测平台并选择对应的移植实现：
 
 日志系统采用三层架构：
 
-**1. Core层 (agentc_core/src/log.c)**
+**1. Core层 (arc_core/src/log.c)**
 - 提供基础日志接口和宏
 - 管理日志级别
 - 路由日志到平台实现
 
-**2. Port层 (agentc_core/port/*/log_*.c)**
+**2. Port层 (arc_core/port/*/log_*.c)**
 - 实现平台相关的日志输出
 - POSIX: 彩色输出到stderr
 - Windows: 控制台彩色输出
@@ -648,41 +648,41 @@ ac_log_set_handler(my_log_handler);
 ### 11.1 嵌入式场景（最小配置）
 
 **需要的组件**：
-- `agentc_core/src/` - 核心代码
-- `agentc_core/port/freertos/` - 移植层
+- `arc_core/src/` - 核心代码
+- `arc_core/port/freertos/` - 移植层
 - HTTP backend实现
 
 **构建示例**：
 ```bash
 cmake -B build \
     -DCMAKE_TOOLCHAIN_FILE=arm-none-eabi.cmake \
-    -DAGENTC_PROFILE=minimal \
-    -DAGENTC_PORT=freertos
+    -DARC_PROFILE=minimal \
+    -DARC_PORT=freertos
 ```
 
 ### 11.2 桌面应用场景
 
 **需要的组件**：
-- `agentc_core/` - 核心
-- `agentc_hosted/` - 增强特性（dotenv、args、markdown）
+- `arc_core/` - 核心
+- `arc_hosted/` - 增强特性（dotenv、args、markdown）
 
 **构建示例**：
 ```bash
-cmake -B build -DAGENTC_PROFILE=hosted
+cmake -B build -DARC_PROFILE=hosted
 cmake --build build
 ```
 
 ### 11.3 服务器场景
 
 **需要的组件**：
-- `agentc_core/` - 核心
-- `agentc_hosted/` - 部分特性（dotenv、unicode）
+- `arc_core/` - 核心
+- `arc_hosted/` - 部分特性（dotenv、unicode）
 - 可能需要添加：日志轮转、监控等
 
 **构建示例**：
 ```bash
 cmake -B build \
-    -DAGENTC_PROFILE=hosted \
+    -DARC_PROFILE=hosted \
     -DCMAKE_BUILD_TYPE=Release
 ```
 
@@ -711,7 +711,7 @@ cmake -B build \
 
 ### 13.1 对嵌入式用户
 
-✅ **最小依赖**：只需要`agentc_core/`  
+✅ **最小依赖**：只需要`arc_core/`  
 ✅ **清晰的移植接口**：`port/`目录一目了然  
 ✅ **内存可控**：支持自定义分配器  
 ✅ **资源占用小**：仅链接需要的组件  
@@ -726,13 +726,13 @@ cmake -B build \
 ### 13.3 对贡献者
 
 ✅ **职责清晰**：目录结构反映功能边界  
-✅ **易于扩展**：添加新特性到`agentc_hosted/`  
+✅ **易于扩展**：添加新特性到`arc_hosted/`  
 ✅ **工具支持**：MOC自动化工具注册  
 ✅ **测试友好**：核心与平台分离，易于Mock  
 
 ## 14. 总结
 
-AgentC v2架构通过以下设计实现了可移植性和可用性的平衡：
+ArC v2架构通过以下设计实现了可移植性和可用性的平衡：
 
 1. **C99 + POSIX标准**：不自己创造抽象层，使用成熟标准
 2. **清晰分层**：Core（必需）、Hosted（可选）、Port（适配）

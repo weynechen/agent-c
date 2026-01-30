@@ -5,10 +5,10 @@
  * Handles conversion between ac_message_t and JSON format for LLM APIs.
  */
 
-#ifndef AGENTC_MESSAGE_JSON_H
-#define AGENTC_MESSAGE_JSON_H
+#ifndef ARC_MESSAGE_JSON_H
+#define ARC_MESSAGE_JSON_H
 
-#include "agentc/message.h"
+#include "arc/message.h"
 #include "cJSON.h"
 
 #ifdef __cplusplus
@@ -88,12 +88,12 @@ char* ac_tool_calls_to_json_string(const ac_tool_call_t* calls);
  *
  * @param json_str Raw JSON response string
  * @param response Output structure (caller must init and free)
- * @return AGENTC_OK on success
+ * @return ARC_OK on success
  */
-agentc_err_t ac_chat_response_parse(const char* json_str, ac_chat_response_t* response);
+arc_err_t ac_chat_response_parse(const char* json_str, ac_chat_response_t* response);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* AGENTC_MESSAGE_JSON_H */
+#endif /* ARC_MESSAGE_JSON_H */

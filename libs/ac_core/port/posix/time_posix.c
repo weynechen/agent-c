@@ -3,7 +3,7 @@
  * @brief POSIX platform time implementation
  */
 
-#include "agentc/platform.h"
+#include "arc/platform.h"
 #include <sys/time.h>
 
 /**

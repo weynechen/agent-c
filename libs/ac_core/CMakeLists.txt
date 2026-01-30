@@ -1,11 +1,11 @@
-# AgentC Core Library
+# ArC Core Library
 # This is the minimal, platform-independent core
 
 cmake_minimum_required(VERSION 3.14)
 
 # Core sources (platform-independent)
-set(AGENTC_CORE_SOURCES
-    src/agentc.c
+set(ARC_CORE_SOURCES
+    src/arc.c
     src/agent.c
     src/agent_hooks.c
     src/session.c
@@ -26,18 +26,18 @@ set(AGENTC_CORE_SOURCES
 )
 
 # Platform-specific port layer (log, time)
-if(AGENTC_PORT STREQUAL "posix")
-    list(APPEND AGENTC_CORE_SOURCES 
+if(ARC_PORT STREQUAL "posix")
+    list(APPEND ARC_CORE_SOURCES
         port/posix/log_posix.c
         port/posix/time_posix.c
     )
-elseif(AGENTC_PORT STREQUAL "windows")
-    list(APPEND AGENTC_CORE_SOURCES 
+elseif(ARC_PORT STREQUAL "windows")
+    list(APPEND ARC_CORE_SOURCES
         port/windows/log_windows.c
         port/windows/time_windows.c
     )
-elseif(AGENTC_PORT STREQUAL "freertos")
-    list(APPEND AGENTC_CORE_SOURCES 
+elseif(ARC_PORT STREQUAL "freertos")
+    list(APPEND ARC_CORE_SOURCES
         port/freertos/log_freertos.c
         port/freertos/time_freertos.c
         port/freertos/http/http_lwip.c  # Custom HTTP implementation for FreeRTOS
@@ -47,17 +47,17 @@ endif()
 # Custom providers (if any)
 file(GLOB CUSTOM_PROVIDER_SOURCES src/llm/providers/*.c)
 if(CUSTOM_PROVIDER_SOURCES)
-    list(APPEND AGENTC_CORE_SOURCES ${CUSTOM_PROVIDER_SOURCES})
+    list(APPEND ARC_CORE_SOURCES ${CUSTOM_PROVIDER_SOURCES})
     message(STATUS "Found custom LLM providers: ${CUSTOM_PROVIDER_SOURCES}")
 endif()
 
 # Built-in dependencies (cJSON)
 set(CJSON_DIR ${CMAKE_SOURCE_DIR}/external/cjson)
 
-list(APPEND AGENTC_CORE_SOURCES ${CJSON_DIR}/cJSON.c)
+list(APPEND ARC_CORE_SOURCES ${CJSON_DIR}/cJSON.c)
 
 # Create static library
-add_library(ac_core STATIC ${AGENTC_CORE_SOURCES})
+add_library(ac_core STATIC ${ARC_CORE_SOURCES})
 add_library(ac_core::ac_core ALIAS ac_core)
 
 # Include directories
@@ -80,7 +80,7 @@ target_include_directories(ac_core PRIVATE
 )
 
 # Link dependencies
-if(AGENTC_USE_CURL)
+if(ARC_USE_CURL)
     target_link_libraries(ac_core PRIVATE CURL::libcurl)
 endif()
 
@@ -115,4 +115,4 @@ install(EXPORT ac_core-targets
     DESTINATION lib/cmake/ac_core
 )
 
-message(STATUS "AgentC Core: profile=${AGENTC_PROFILE}, port=${AGENTC_PORT}")
+message(STATUS "ArC Core: profile=${ARC_PROFILE}, port=${ARC_PORT}")

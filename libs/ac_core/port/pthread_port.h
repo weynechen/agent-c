@@ -17,16 +17,16 @@
  *   pthread_mutex_destroy(&lock);
  */
 
-#ifndef AGENTC_PTHREAD_PORT_H
-#define AGENTC_PTHREAD_PORT_H
+#ifndef ARC_PTHREAD_PORT_H
+#define ARC_PTHREAD_PORT_H
 
-#include "agentc/platform.h"
+#include "arc/platform.h"
 
 /*============================================================================
  * POSIX Platforms (Linux/macOS) and Windows (via pthreads-win32/vcpkg)
  *============================================================================*/
 
-#if defined(AGENTC_PLATFORM_LINUX) || defined(AGENTC_PLATFORM_MACOS) || defined(AGENTC_PLATFORM_WINDOWS)
+#if defined(ARC_PLATFORM_LINUX) || defined(ARC_PLATFORM_MACOS) || defined(ARC_PLATFORM_WINDOWS)
 
 #include <pthread.h>
 
@@ -36,7 +36,7 @@
  * FreeRTOS - pthread compatibility layer
  *============================================================================*/
 
-#elif defined(AGENTC_PLATFORM_FREERTOS)
+#elif defined(ARC_PLATFORM_FREERTOS)
 
 #include "FreeRTOS.h"
 #include "semphr.h"
@@ -131,4 +131,4 @@ static inline int pthread_mutex_trylock(pthread_mutex_t *mutex) {
 
 #endif /* Platform selection */
 
-#endif /* AGENTC_PTHREAD_PORT_H */
+#endif /* ARC_PTHREAD_PORT_H */

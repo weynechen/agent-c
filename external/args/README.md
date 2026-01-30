@@ -1,4 +1,4 @@
-# AgentC Platform Wrap - 平台封装层
+# ArC Platform Wrap - 平台封装层
 
 这个模块为 hosted 环境提供跨平台的抽象和工具函数。
 
@@ -137,7 +137,7 @@ void platform_free_argv_utf8(char **utf8_argv, int argc);
 
 ```cmake
 # Link platform_wrap library
-target_link_libraries(your_target PRIVATE agentc_platform_wrap)
+target_link_libraries(your_target PRIVATE arc_platform_wrap)
 
 # Include header directory
 target_include_directories(your_target PRIVATE
@@ -158,4 +158,4 @@ target_include_directories(your_target PRIVATE
 
 ## 许可证
 
-遵循 AgentC 项目的许可证。
+遵循 ArC 项目的许可证。

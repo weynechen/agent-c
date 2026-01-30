@@ -3,7 +3,7 @@
  * @brief ReACT Agent demo with MOC-generated tool calling
  *
  * This example demonstrates how to use MOC (Meta-Object Compiler) generated
- * tool wrappers with the AgentC framework.
+ * tool wrappers with the ArC framework.
  *
  * Usage:
  *   ./chat_tools "What time is it?"
@@ -15,7 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <agentc.h>
+#include <arc.h>
 
 /* Platform wrapper for terminal UTF-8 support and argument encoding */
 #include "platform_wrap.h"
@@ -35,7 +35,7 @@
 
 static void print_usage(const char *prog) {
     printf("Usage: %s <prompt>\n\n", prog);
-    printf("AgentC Tool Demo with MOC-generated tools\n\n");
+    printf("ArC Tool Demo with MOC-generated tools\n\n");
     printf("Examples:\n");
     printf("  %s \"What time is it?\"\n", prog);
     printf("  %s \"Calculate 123 * 456\"\n", prog);
@@ -84,7 +84,7 @@ int main(int argc, char *argv[]) {
     const char *model = getenv("OPENAI_MODEL");
     if (!model) model = "gpt-4o-mini";
 
-    printf("=== AgentC Tool Demo (MOC Integration) ===\n");
+    printf("=== ArC Tool Demo (MOC Integration) ===\n");
     printf("Model: %s\n", model);
     if (base_url) printf("URL: %s\n", base_url);
     printf("Tools: %zu available\n\n", ALL_TOOLS_COUNT);
@@ -100,7 +100,7 @@ int main(int argc, char *argv[]) {
 
     /*
      * Create tool registry and add MOC-generated tools.
-     * 
+     *
      * Use AC_TOOLS() macro to select tools by function name.
      * The macro expands to: &TOOL_func1, &TOOL_func2, ..., NULL
      */
@@ -114,11 +114,11 @@ int main(int argc, char *argv[]) {
     }
 
     /* Add selected tools using AC_TOOLS macro */
-    agentc_err_t err = ac_tool_registry_add_array(tools,
+    arc_err_t err = ac_tool_registry_add_array(tools,
         AC_TOOLS(get_current_time, calculator, get_weather, convert_temperature, random_number)
     );
-    
-    if (err != AGENTC_OK) {
+
+    if (err != ARC_OK) {
         AC_LOG_WARN("Failed to add some tools: %s", ac_strerror(err));
     }
 
@@ -129,7 +129,7 @@ int main(int argc, char *argv[]) {
     /* Create agent with tool registry */
     ac_agent_t *agent = ac_agent_create(session, &(ac_agent_params_t){
         .name = "ToolAgent",
-        .instructions = 
+        .instructions =
             "You are a helpful assistant with access to tools.\n"
             "Use the available tools to help answer user questions.\n"
             "Always use tools when they can provide accurate information.\n",
@@ -153,9 +153,9 @@ int main(int argc, char *argv[]) {
 
     /* Run agent with user input */
     printf("[User] %s\n\n", user_prompt);
-    
+
     ac_agent_result_t *result = ac_agent_run(agent, user_prompt);
-    
+
     if (result && result->content) {
         printf("[Assistant] %s\n\n", result->content);
     } else {
@@ -164,7 +164,7 @@ int main(int argc, char *argv[]) {
 
     /* Cleanup - session closes everything */
     ac_session_close(session);
-    
+
     platform_free_argv_utf8(utf8_argv, argc);
     platform_cleanup_terminal();
 

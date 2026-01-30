@@ -1,7 +1,7 @@
 /**
  * @file chat_markdown.c
  * @brief Demo program for terminal Markdown rendering with streaming support
- * 
+ *
  * This demonstrates both batch and streaming Markdown rendering.
  */
 
@@ -16,14 +16,14 @@
 #include <unistd.h>
 #endif
 
-/* Include AgentC logging */
-#include <agentc/log.h>
+/* Include ArC logging */
+#include <arc/log.h>
 
 /* Include the markdown library */
 #include "markdown/md.h"
 
 /* Sample Markdown content for demonstration */
-static const char* DEMO_MARKDOWN = 
+static const char* DEMO_MARKDOWN =
 "# Terminal Markdown Demo\n"
 "\n"
 "This is a **demonstration** of the terminal Markdown renderer.\n"
@@ -97,8 +97,8 @@ static const char* DEMO_MARKDOWN =
 /* Streaming demo: simulate character-by-character input */
 static void demo_streaming(void) {
     printf("\n\n=== Streaming Demo ===\n\n");
-    
-    const char* streaming_md = 
+
+    const char* streaming_md =
         "# Streaming Mode\n"
         "\n"
         "This content is being rendered **incrementally**...\n"
@@ -113,13 +113,13 @@ static void demo_streaming(void) {
         "- Item 3\n"
         "\n"
         "Done!\n";
-    
+
     md_stream_t* stream = md_stream_new();
     if (!stream) {
         AC_LOG_ERROR( "Failed to create stream\n");
         return;
     }
-    
+
     /* Simulate streaming input - feed characters one at a time with delay */
     size_t len = strlen(streaming_md);
     for (size_t i = 0; i < len; i++) {
@@ -127,7 +127,7 @@ static void demo_streaming(void) {
         /* Small delay to show streaming effect */
         usleep(5000);  /* 5ms */
     }
-    
+
     md_stream_finish(stream);
     md_stream_free(stream);
 }
@@ -160,7 +160,7 @@ int main(int argc, char* argv[]) {
     int show_stream = 0;
     const char* file_path = NULL;
     const char* text = NULL;
-    
+
     /* Parse arguments */
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
@@ -179,7 +179,7 @@ int main(int argc, char* argv[]) {
             show_demo = 0;
         }
     }
-    
+
     /* Render file if specified */
     if (file_path) {
         FILE* f = fopen(file_path, "r");
@@ -187,43 +187,43 @@ int main(int argc, char* argv[]) {
             AC_LOG_ERROR( "Error: Cannot open file '%s'\n", file_path);
             return 1;
         }
-        
+
         /* Read entire file */
         fseek(f, 0, SEEK_END);
         long size = ftell(f);
         fseek(f, 0, SEEK_SET);
-        
+
         char* content = (char*)malloc(size + 1);
         if (!content) {
             fclose(f);
             AC_LOG_ERROR( "Error: Out of memory\n");
             return 1;
         }
-        
+
         size_t read_size = fread(content, 1, size, f);
         content[read_size] = '\0';
         fclose(f);
-        
+
         md_render(content);
         free(content);
         return 0;
     }
-    
+
     /* Render text if specified */
     if (text) {
         md_render(text);
         return 0;
     }
-    
+
     /* Run demos */
     if (show_demo) {
         printf("=== Batch Rendering Demo ===\n\n");
         md_render(DEMO_MARKDOWN);
     }
-    
+
     if (show_stream || show_demo) {
         demo_streaming();
     }
-    
+
     return 0;
 }

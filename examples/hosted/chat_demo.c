@@ -1,6 +1,6 @@
 /**
  * @file chat_demo.c
- * @brief Terminal chatbot demo using AgentC
+ * @brief Terminal chatbot demo using ArC
  *
  * Usage:
  *   1. Create .env file with OPENAI_API_KEY=sk-xxx
@@ -16,7 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
-#include <agentc.h>
+#include <arc.h>
 #include "dotenv.h"
 #include "markdown/md.h"
 #include "platform_wrap.h"
@@ -44,7 +44,7 @@ static void print_usage(void) {
 /**
  * @brief Create or recreate agent with current configuration
  */
-static ac_agent_t *create_agent(ac_session_t *session, const char *model, 
+static ac_agent_t *create_agent(ac_session_t *session, const char *model,
                                 const char *api_key, const char *base_url) {
     ac_agent_t *agent = ac_agent_create(session, &(ac_agent_params_t){
         .name = "ChatBot",
@@ -58,7 +58,7 @@ static ac_agent_t *create_agent(ac_session_t *session, const char *model,
         .tools = NULL,
         .max_iterations = 10
     });
-    
+
     return agent;
 }
 
@@ -68,14 +68,14 @@ int main(int argc, char *argv[]) {
 
     /* Initialize platform-specific terminal settings */
     platform_init_terminal(NULL);
-    
+
     /* Load environment from .env file */
     if (env_load(".", false) == 0) {
         printf("[Loaded .env file]\n");
     } else {
         printf("[No .env file found, using environment variables]\n");
     }
-    
+
     /* Get API key from environment */
     const char *api_key = getenv("OPENAI_API_KEY");
     if (!api_key || strlen(api_key) == 0) {
@@ -83,17 +83,17 @@ int main(int argc, char *argv[]) {
         AC_LOG_ERROR("Create a .env file with: OPENAI_API_KEY=sk-xxx");
         return 1;
     }
-    
+
     /* Optional: custom base URL and model */
     const char *base_url = getenv("OPENAI_BASE_URL");
     const char *model = getenv("OPENAI_MODEL");
     if (!model) {
         model = "gpt-3.5-turbo";
     }
-    
+
     /* Setup signal handler */
     signal(SIGINT, signal_handler);
-    
+
     /* Open session */
     ac_session_t *session = ac_session_open();
     if (!session) {
@@ -101,7 +101,7 @@ int main(int argc, char *argv[]) {
         platform_cleanup_terminal();
         return 1;
     }
-    
+
     /* Create agent */
     ac_agent_t *agent = create_agent(session, model, api_key, base_url);
     if (!agent) {
@@ -110,34 +110,34 @@ int main(int argc, char *argv[]) {
         platform_cleanup_terminal();
         return 1;
     }
-    
-    printf("\n=== AgentC Chat Demo ===\n");
+
+    printf("\n=== ArC Chat Demo ===\n");
     printf("Model: %s\n", model);
     printf("Endpoint: %s\n", base_url ? base_url : "https://api.openai.com/v1");
     printf("Markdown: %s (use /md to toggle)\n", g_use_markdown ? "ON" : "OFF");
     printf("Type /help for commands, /quit to exit\n\n");
-    
+
     char input[MAX_INPUT_LEN];
-    
+
     while (g_running) {
         printf("You: ");
         fflush(stdout);
-        
+
         if (!fgets(input, sizeof(input), stdin)) {
             break;
         }
-        
+
         /* Remove trailing newline */
         size_t len = strlen(input);
         if (len > 0 && input[len - 1] == '\n') {
             input[--len] = '\0';
         }
-        
+
         /* Skip empty input */
         if (len == 0) {
             continue;
         }
-        
+
         /* Handle commands */
         if (input[0] == '/') {
             if (strcmp(input, "/quit") == 0 || strcmp(input, "/exit") == 0) {
@@ -167,13 +167,13 @@ int main(int argc, char *argv[]) {
                 continue;
             }
         }
-        
+
         printf("Assistant: ");
         fflush(stdout);
-        
+
         /* Run agent */
         ac_agent_result_t *result = ac_agent_run(agent, input);
-        
+
         if (result && result->content) {
             if (g_use_markdown) {
                 md_render(result->content);
@@ -183,14 +183,14 @@ int main(int argc, char *argv[]) {
         } else {
             printf("[No response from agent]\n");
         }
-        
+
         printf("\n");
     }
-    
+
     /* Cleanup - session automatically destroys all agents */
     ac_session_close(session);
     platform_cleanup_terminal();
-    
+
     printf("Goodbye!\n");
     return 0;
 }

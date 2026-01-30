@@ -22,7 +22,7 @@ typedef strcut{
 
 
 ## tools
-使用 agentc_tool来标记这个函数，随后moc程序会扫描到这个标记，解析出来：
+使用 arc_tool来标记这个函数，随后moc程序会扫描到这个标记，解析出来：
 1. description : 工具的描述
 2. function name : 函数名
 3. function params : 函数参数
@@ -36,7 +36,7 @@ tools_group的用途是给tools划分群组，以便给到不同的agent使用�
 
 ```
 /**
- * @agentc_tool
+ * @arc_tool
  * @tools_group:test1,test2 ...
  * @description Get the current weather for a city
  */
@@ -126,7 +126,7 @@ ac_log("%s\n",result->response);
 定义的方式和同步一样，但输出的方式采用循环读的方式。
 
 ```c
-ac_stream_t* stream = agentc_run(agent, "今天北京天气怎么样？");
+ac_stream_t* stream = arc_run(agent, "今天北京天气怎么样？");
 
 while(stream->is_runing())
 {
@@ -138,5 +138,3 @@ while(stream->is_runing())
 
 # 多agent 联合编排
 初步的想法是参考LangGraph的图的形式。还没有完全确定应该如何做，待定。
-
-

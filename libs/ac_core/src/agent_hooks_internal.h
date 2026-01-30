@@ -10,10 +10,10 @@
  * - Define AC_DISABLE_HOOKS to completely disable hooks (zero overhead)
  */
 
-#ifndef AGENTC_AGENT_HOOKS_INTERNAL_H
-#define AGENTC_AGENT_HOOKS_INTERNAL_H
+#ifndef ARC_AGENT_HOOKS_INTERNAL_H
+#define ARC_AGENT_HOOKS_INTERNAL_H
 
-#include "agentc/agent_hooks.h"
+#include "arc/agent_hooks.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -72,4 +72,4 @@ void ac_hook_call_tool_end(const ac_hook_tool_end_t *info);
 }
 #endif
 
-#endif /* AGENTC_AGENT_HOOKS_INTERNAL_H */
+#endif /* ARC_AGENT_HOOKS_INTERNAL_H */

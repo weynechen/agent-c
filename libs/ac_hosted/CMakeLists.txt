@@ -1,4 +1,4 @@
-# AgentC Hosted Components
+# ArC Hosted Components
 # Additional features for full OS environments (Linux/Windows/macOS)
 
 cmake_minimum_required(VERSION 3.14)
@@ -8,41 +8,41 @@ cmake_minimum_required(VERSION 3.14)
 #============================================================================
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    set(AGENTC_SANDBOX_PLATFORM "linux")
-    set(AGENTC_SANDBOX_SOURCE src/sandbox/sandbox_linux.c)
+    set(ARC_SANDBOX_PLATFORM "linux")
+    set(ARC_SANDBOX_SOURCE src/sandbox/sandbox_linux.c)
     message(STATUS "Sandbox: Linux platform detected (Landlock+Seccomp)")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-    set(AGENTC_SANDBOX_PLATFORM "macos")
-    set(AGENTC_SANDBOX_SOURCE src/sandbox/sandbox_macos.c)
+    set(ARC_SANDBOX_PLATFORM "macos")
+    set(ARC_SANDBOX_SOURCE src/sandbox/sandbox_macos.c)
     message(STATUS "Sandbox: macOS platform detected (Seatbelt)")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-    set(AGENTC_SANDBOX_PLATFORM "windows")
-    set(AGENTC_SANDBOX_SOURCE src/sandbox/sandbox_fallback.c)
+    set(ARC_SANDBOX_PLATFORM "windows")
+    set(ARC_SANDBOX_SOURCE src/sandbox/sandbox_fallback.c)
     message(STATUS "Sandbox: Windows platform detected (Software filtering)")
 else()
-    set(AGENTC_SANDBOX_PLATFORM "fallback")
-    set(AGENTC_SANDBOX_SOURCE src/sandbox/sandbox_fallback.c)
+    set(ARC_SANDBOX_PLATFORM "fallback")
+    set(ARC_SANDBOX_SOURCE src/sandbox/sandbox_fallback.c)
     message(STATUS "Sandbox: Unknown platform (Software filtering)")
 endif()
 
 # Hosted sources
 # Note: mcp and tools have been moved to ac_core
-set(AGENTC_HOSTED_SOURCES
+set(ARC_HOSTED_SOURCES
     src/rules/rules.c
     src/skills/skills.c
     src/skills/skill_parser.c
     src/skills/skill_prompt.c
     src/skills/skill_tool.c
     src/sandbox/sandbox_common.c
-    ${AGENTC_SANDBOX_SOURCE}
+    ${ARC_SANDBOX_SOURCE}
     src/trace/trace_json_exporter.c
     src/http_pool/http_pool.c
 )
 
 # Component: dotenv
 set(DOTENV_DIR ${CMAKE_SOURCE_DIR}/external/dotenv)
-add_library(agentc_dotenv STATIC ${DOTENV_DIR}/dotenv.c)
-target_include_directories(agentc_dotenv PUBLIC
+add_library(arc_dotenv STATIC ${DOTENV_DIR}/dotenv.c)
+target_include_directories(arc_dotenv PUBLIC
     $<BUILD_INTERFACE:${DOTENV_DIR}>
     $<INSTALL_INTERFACE:include>
 )
@@ -92,29 +92,29 @@ set(PCRE2_SOURCES
     ${PCRE2_DIR}/pcre2_xclass.c
 )
 
-add_library(agentc_markdown STATIC ${MARKDOWN_SOURCES} ${PCRE2_SOURCES})
-target_include_directories(agentc_markdown PUBLIC
+add_library(arc_markdown STATIC ${MARKDOWN_SOURCES} ${PCRE2_SOURCES})
+target_include_directories(arc_markdown PUBLIC
     $<BUILD_INTERFACE:${MARKDOWN_DIR}>
     $<BUILD_INTERFACE:${PCRE2_DIR}>
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/libs/ac_core/include>
     $<INSTALL_INTERFACE:include>
 )
-target_link_libraries(agentc_markdown PUBLIC
+target_link_libraries(arc_markdown PUBLIC
     ac_core::ac_core
 )
-target_compile_definitions(agentc_markdown PRIVATE
+target_compile_definitions(arc_markdown PRIVATE
     HAVE_CONFIG_H
     PCRE2_CODE_UNIT_WIDTH=8
 )
 
 # CRITICAL: Define PCRE2_STATIC for static linking on Windows
 # This must be PUBLIC so that consuming targets also see it
-target_compile_definitions(agentc_markdown PUBLIC
+target_compile_definitions(arc_markdown PUBLIC
     PCRE2_STATIC
 )
 
 # Hosted library (combining all hosted features)
-add_library(ac_hosted STATIC ${AGENTC_HOSTED_SOURCES})
+add_library(ac_hosted STATIC ${ARC_HOSTED_SOURCES})
 add_library(ac_hosted::ac_hosted ALIAS ac_hosted)
 
 target_include_directories(ac_hosted PUBLIC
@@ -141,7 +141,7 @@ target_link_libraries(ac_hosted PUBLIC
 )
 
 # Install libraries
-install(TARGETS ac_hosted agentc_dotenv agentc_markdown
+install(TARGETS ac_hosted arc_dotenv arc_markdown
     EXPORT ac_hosted-targets
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
@@ -154,9 +154,9 @@ install(EXPORT ac_hosted-targets
 )
 
 # Install headers
-install(DIRECTORY include/agentc
+install(DIRECTORY include/arc
     DESTINATION include
     FILES_MATCHING PATTERN "*.h"
 )
 
-message(STATUS "AgentC Hosted: rules, skills, sandbox (${AGENTC_SANDBOX_PLATFORM}), markdown, dotenv built")
+message(STATUS "ArC Hosted: rules, skills, sandbox (${ARC_SANDBOX_PLATFORM}), markdown, dotenv built")

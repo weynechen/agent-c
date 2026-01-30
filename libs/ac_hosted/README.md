@@ -1,4 +1,4 @@
-# AgentC Hosted Features
+# ArC Hosted Features
 
 This directory contains features that require a full operating system environment (Linux/Windows/macOS/Server).
 
@@ -11,10 +11,10 @@ Manage coding rules and constraints that are injected into the system prompt.
 
 **API**:
 ```c
-#include <agentc/rules.h>
+#include <arc/rules.h>
 
 ac_rules_t *rules = ac_rules_create();
-ac_rules_load_dir(rules, ".code-agentc/rules");
+ac_rules_load_dir(rules, ".code-arc/rules");
 char *prompt = ac_rules_build_prompt(rules, base_prompt);
 ```
 
@@ -31,12 +31,12 @@ Skills are discovered from directories containing `SKILL.md` files.
 
 **API**:
 ```c
-#include <agentc/skills.h>
+#include <arc/skills.h>
 
 ac_skills_t *skills = ac_skills_create();
 
 // Discover skills (loads metadata only)
-ac_skills_discover_dir(skills, ".code-agentc/skills");
+ac_skills_discover_dir(skills, ".code-arc/skills");
 
 // Build discovery prompt for system message
 char *discovery = ac_skills_build_discovery_prompt(skills);
@@ -85,7 +85,7 @@ Model Context Protocol client for integrating with MCP servers.
 
 **API**:
 ```c
-#include <agentc/mcp.h>
+#include <arc/mcp.h>
 
 ac_mcp_client_t *client = ac_mcp_create(&(ac_mcp_config_t){
     .server_url = "http://localhost:3000",
@@ -117,10 +117,10 @@ Environment variable loading from `.env` files.
 ## Usage in Applications
 
 ```c
-#include <agentc.h>           /* Core AgentC */
-#include <agentc/rules.h>     /* Hosted: Rules */
-#include <agentc/skills.h>    /* Hosted: Skills */
-#include <agentc/mcp.h>       /* Hosted: MCP */
+#include <arc.h>           /* Core ArC */
+#include <arc/rules.h>     /* Hosted: Rules */
+#include <arc/skills.h>    /* Hosted: Skills */
+#include <arc/mcp.h>       /* Hosted: MCP */
 
 int main() {
     /* Load rules */
@@ -168,7 +168,7 @@ int main() {
 
 ## Design Principles
 
-1. **No Core Modification**: All hosted features work on top of agentc_core without modifying it
+1. **No Core Modification**: All hosted features work on top of arc_core without modifying it
 2. **Optional**: Applications can use only the features they need
 3. **Composable**: Features work independently or together
 4. **Clear Separation**: Hosted features require OS capabilities that embedded systems may not have
@@ -177,7 +177,7 @@ int main() {
 
 ```
 ac_hosted/
-├── include/agentc/
+├── include/arc/
 │   ├── rules.h          # Rules management API
 │   ├── skills.h         # Skills management API
 │   └── ...
@@ -236,7 +236,7 @@ ac_hosted/
 
 ## Dependencies
 
-- **agentc_core**: Required (core agent framework)
+- **arc_core**: Required (core agent framework)
 - **libcurl**: Required for HTTP (MCP client)
 - **pcre2**: Required for markdown rendering
 - **yaml-parser** (future): For YAML configuration parsing
