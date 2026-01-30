@@ -127,6 +127,7 @@ set(CODE_AGENTC_SOURCES
     # Core
     src/code_agent.c
     src/prompt_loader.c
+    src/code_tools_enhanced.c
     
     # Tools
     src/tools/tool_bash.c

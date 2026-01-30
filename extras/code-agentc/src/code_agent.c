@@ -5,6 +5,7 @@
 
 #include "code_agent.h"
 #include "code_tools.h"
+#include "code_tools_enhanced.h"
 #include "prompt_loader.h"
 #include <agentc.h>
 #include <stdio.h>
@@ -23,6 +24,7 @@ struct code_agent {
     code_agent_config_t config;
     ac_session_t *session;
     char *rendered_system_prompt;
+    prompt_context_t prompt_ctx;  /**< Context for prompt placeholder substitution */
 };
 
 /*============================================================================
@@ -111,11 +113,16 @@ code_agent_t *code_agent_create(const code_agent_config_t *config) {
     code_tools_set_workspace(agent->config.workspace);
     code_tools_set_safe_mode(agent->config.safe_mode);
     
-    /* Render system prompt with workspace substitution */
+    /* Initialize prompt context for placeholder substitution */
+    prompt_context_init(&agent->prompt_ctx, agent->config.workspace);
+    agent->prompt_ctx.safe_mode = agent->config.safe_mode;
+    agent->prompt_ctx.sandbox_enabled = agent->config.enable_sandbox;
+    
+    /* Render system prompt with full context */
     const char *prompt_name = agent->config.system_prompt ? 
                               agent->config.system_prompt : "anthropic";
-    agent->rendered_system_prompt = prompt_render_system(prompt_name, 
-                                                         agent->config.workspace);
+    agent->rendered_system_prompt = prompt_render_system_ctx(prompt_name, 
+                                                              &agent->prompt_ctx);
     
     if (!agent->rendered_system_prompt) {
         AC_LOG_WARN("System prompt '%s' not found, using default", prompt_name);
@@ -168,12 +175,16 @@ int code_agent_run_once(code_agent_t *agent, const char *task) {
         printf("[Task] %s\n\n", task);
     }
     
-    /* Create tool registry */
+    /* Create tool registry with enhanced descriptions */
     ac_tool_registry_t *tools = NULL;
     if (agent->config.enable_tools) {
         tools = ac_tool_registry_create(agent->session);
         if (tools) {
-            ac_tool_registry_add_array(tools, ALL_TOOLS);
+            /* Use enhanced registration with prompt-based descriptions */
+            int registered = code_tools_register_enhanced(tools, &agent->prompt_ctx);
+            if (!agent->config.quiet && registered > 0) {
+                printf("Registered %d tools with enhanced descriptions\n", registered);
+            }
         }
     }
     
@@ -250,12 +261,16 @@ int code_agent_run_interactive(code_agent_t *agent) {
         printf("Type 'exit' or 'quit' to exit, 'help' for commands.\n\n");
     }
     
-    /* Create tool registry */
+    /* Create tool registry with enhanced descriptions */
     ac_tool_registry_t *tools = NULL;
     if (agent->config.enable_tools) {
         tools = ac_tool_registry_create(agent->session);
         if (tools) {
-            ac_tool_registry_add_array(tools, ALL_TOOLS);
+            /* Use enhanced registration with prompt-based descriptions */
+            int registered = code_tools_register_enhanced(tools, &agent->prompt_ctx);
+            if (!agent->config.quiet && registered > 0) {
+                printf("Tools: %d registered with enhanced prompts\n\n", registered);
+            }
         }
     }
     

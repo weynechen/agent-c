@@ -9,6 +9,17 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Platform-specific includes */
+#ifdef _WIN32
+    #include <windows.h>
+    #include <direct.h>
+    #define getcwd _getcwd
+#else
+    #include <unistd.h>
+    #include <pwd.h>
+    #include <sys/utsname.h>
+#endif
+
 /*============================================================================
  * Prompt Access
  *============================================================================*/
@@ -119,6 +130,142 @@ char *prompt_render_tool(const char *name, const char *workspace) {
     free(temp);
     
     return result;
+}
+
+/*============================================================================
+ * Context Initialization
+ *============================================================================*/
+
+void prompt_context_init(prompt_context_t *ctx, const char *workspace) {
+    if (!ctx) return;
+    
+    memset(ctx, 0, sizeof(*ctx));
+    
+    /* Set workspace and directory (alias) */
+    ctx->workspace = workspace ? workspace : ".";
+    ctx->directory = ctx->workspace;
+    
+    /* Get current working directory */
+    static char cwd_buf[4096];
+    if (getcwd(cwd_buf, sizeof(cwd_buf)) != NULL) {
+        ctx->cwd = cwd_buf;
+    } else {
+        ctx->cwd = ".";
+    }
+    
+#ifdef _WIN32
+    /* Windows: Detect OS */
+    ctx->os = "Windows";
+    
+    /* Windows: Get shell (typically cmd or powershell) */
+    const char *comspec = getenv("COMSPEC");
+    if (comspec) {
+        const char *slash = strrchr(comspec, '\\');
+        ctx->shell = slash ? slash + 1 : comspec;
+    } else {
+        ctx->shell = "cmd.exe";
+    }
+    
+    /* Windows: Get username */
+    const char *user_env = getenv("USERNAME");
+    ctx->user = user_env ? user_env : "unknown";
+    
+#else
+    /* POSIX: Detect OS */
+    struct utsname uts;
+    static char os_buf[128];
+    if (uname(&uts) == 0) {
+        snprintf(os_buf, sizeof(os_buf), "%s", uts.sysname);
+        ctx->os = os_buf;
+    } else {
+        ctx->os = "unknown";
+    }
+    
+    /* POSIX: Detect shell from environment */
+    const char *shell_env = getenv("SHELL");
+    if (shell_env) {
+        /* Extract basename */
+        const char *slash = strrchr(shell_env, '/');
+        ctx->shell = slash ? slash + 1 : shell_env;
+    } else {
+        ctx->shell = "sh";
+    }
+    
+    /* POSIX: Get username */
+    struct passwd *pw = getpwuid(getuid());
+    if (pw) {
+        ctx->user = pw->pw_name;
+    } else {
+        const char *user_env = getenv("USER");
+        ctx->user = user_env ? user_env : "unknown";
+    }
+#endif
+    
+    /* Default settings */
+    ctx->safe_mode = 1;
+    ctx->sandbox_enabled = 1;
+}
+
+/*============================================================================
+ * Context-based Rendering
+ *============================================================================*/
+
+char *prompt_render(const char *template, const prompt_context_t *ctx) {
+    if (!template) return NULL;
+    
+    /* Use defaults if no context */
+    prompt_context_t default_ctx;
+    if (!ctx) {
+        prompt_context_init(&default_ctx, ".");
+        ctx = &default_ctx;
+    }
+    
+    /* Apply substitutions in sequence */
+    char *result = strdup(template);
+    if (!result) return NULL;
+    
+    /* Define placeholder mappings */
+    struct {
+        const char *placeholder;
+        const char *value;
+    } mappings[] = {
+        { "${workspace}", ctx->workspace },
+        { "${cwd}", ctx->cwd },
+        { "${directory}", ctx->directory },
+        { "${os}", ctx->os },
+        { "${shell}", ctx->shell },
+        { "${user}", ctx->user },
+        { "${safe_mode}", ctx->safe_mode ? "enabled" : "disabled" },
+        { "${sandbox}", ctx->sandbox_enabled ? "enabled" : "disabled" },
+        { NULL, NULL }
+    };
+    
+    /* Apply each substitution */
+    for (int i = 0; mappings[i].placeholder != NULL; i++) {
+        if (!mappings[i].value) continue;
+        
+        char *temp = string_replace(result, mappings[i].placeholder, mappings[i].value);
+        if (temp) {
+            free(result);
+            result = temp;
+        }
+    }
+    
+    return result;
+}
+
+char *prompt_render_system_ctx(const char *name, const prompt_context_t *ctx) {
+    const char *content = prompt_get_system(name);
+    if (!content) return NULL;
+    
+    return prompt_render(content, ctx);
+}
+
+char *prompt_render_tool_ctx(const char *name, const prompt_context_t *ctx) {
+    const char *content = prompt_get_tool(name);
+    if (!content) return NULL;
+    
+    return prompt_render(content, ctx);
 }
 
 /*============================================================================
