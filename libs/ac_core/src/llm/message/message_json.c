@@ -78,6 +78,56 @@ cJSON* ac_message_to_json(const ac_message_t* msg) {
 }
 
 /*============================================================================
+ * Message List Serialization
+ *============================================================================*/
+
+char* ac_messages_to_json_string(const ac_message_t* messages) {
+    if (!messages) {
+        return NULL;
+    }
+    
+    cJSON* arr = cJSON_CreateArray();
+    if (!arr) {
+        return NULL;
+    }
+    
+    for (const ac_message_t* msg = messages; msg; msg = msg->next) {
+        cJSON* msg_json = ac_message_to_json(msg);
+        if (msg_json) {
+            cJSON_AddItemToArray(arr, msg_json);
+        }
+    }
+    
+    char* json_str = cJSON_PrintUnformatted(arr);
+    cJSON_Delete(arr);
+    
+    return json_str;
+}
+
+char* ac_tool_calls_to_json_string(const ac_tool_call_t* calls) {
+    if (!calls) {
+        return NULL;
+    }
+    
+    cJSON* arr = cJSON_CreateArray();
+    if (!arr) {
+        return NULL;
+    }
+    
+    for (const ac_tool_call_t* call = calls; call; call = call->next) {
+        cJSON* call_json = ac_tool_call_to_json(call);
+        if (call_json) {
+            cJSON_AddItemToArray(arr, call_json);
+        }
+    }
+    
+    char* json_str = cJSON_PrintUnformatted(arr);
+    cJSON_Delete(arr);
+    
+    return json_str;
+}
+
+/*============================================================================
  * Chat Response Helpers
  *============================================================================*/
 

@@ -42,6 +42,32 @@ cJSON* ac_message_to_json(const ac_message_t* msg);
 cJSON* ac_tool_call_to_json(const ac_tool_call_t* call);
 
 /*============================================================================
+ * Message List Serialization
+ *============================================================================*/
+
+/**
+ * @brief Serialize message list to JSON array string
+ *
+ * Converts a linked list of messages to a JSON array string.
+ * Useful for tracing/debugging.
+ *
+ * @param messages Head of message list
+ * @return JSON string (caller must free), NULL on error
+ */
+char* ac_messages_to_json_string(const ac_message_t* messages);
+
+/**
+ * @brief Serialize tool call list to JSON array string
+ *
+ * Converts a linked list of tool calls to a JSON array string.
+ * Useful for tracing/debugging.
+ *
+ * @param calls Head of tool call list
+ * @return JSON string (caller must free), NULL on error
+ */
+char* ac_tool_calls_to_json_string(const ac_tool_call_t* calls);
+
+/*============================================================================
  * JSON to Response
  *============================================================================*/
 

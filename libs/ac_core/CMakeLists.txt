@@ -7,6 +7,7 @@ cmake_minimum_required(VERSION 3.14)
 set(AGENTC_CORE_SOURCES
     src/agentc.c
     src/agent.c
+    src/agent_hooks.c
     src/session.c
     src/arena.c
     src/memory/message.c

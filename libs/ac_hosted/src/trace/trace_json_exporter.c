@@ -40,25 +40,17 @@ static json_exporter_state_t s_state = {0};
  * Helper Functions
  *============================================================================*/
 
-/**
- * @brief Ensure output directory exists
- */
 static int ensure_dir(const char *path) {
     struct stat st;
     if (stat(path, &st) == 0) {
         return S_ISDIR(st.st_mode) ? 0 : -1;
     }
-    
-    /* Create directory */
     if (mkdir_p(path) != 0 && errno != EEXIST) {
         return -1;
     }
     return 0;
 }
 
-/**
- * @brief Format timestamp as ISO 8601
- */
 static void format_iso_timestamp(uint64_t ts_ms, char *buf, size_t size) {
     time_t secs = (time_t)(ts_ms / 1000);
     int ms = (int)(ts_ms % 1000);
@@ -74,9 +66,6 @@ static void format_iso_timestamp(uint64_t ts_ms, char *buf, size_t size) {
              ms);
 }
 
-/**
- * @brief Format timestamp for filename (YYYYMMDD_HHMMSS)
- */
 static void format_file_timestamp(char *buf, size_t size) {
     time_t now = time(NULL);
     struct tm *tm_info = localtime(&now);
@@ -90,9 +79,6 @@ static void format_file_timestamp(char *buf, size_t size) {
              tm_info->tm_sec);
 }
 
-/**
- * @brief Escape string for JSON
- */
 static void write_json_string(FILE *f, const char *str) {
     if (!str) {
         fprintf(f, "null");
@@ -118,9 +104,6 @@ static void write_json_string(FILE *f, const char *str) {
     fputc('"', f);
 }
 
-/**
- * @brief Write indentation for pretty printing
- */
 static void write_indent(FILE *f, int level, int pretty) {
     if (!pretty) return;
     for (int i = 0; i < level; i++) {
@@ -128,15 +111,12 @@ static void write_indent(FILE *f, int level, int pretty) {
     }
 }
 
-/**
- * @brief Write newline for pretty printing
- */
 static void write_newline(FILE *f, int pretty) {
     if (pretty) fputc('\n', f);
 }
 
 /*============================================================================
- * Event Writing
+ * Event Data Writers
  *============================================================================*/
 
 static void write_agent_start(FILE *f, const ac_trace_agent_start_t *data, int pretty) {
@@ -187,7 +167,7 @@ static void write_agent_end(FILE *f, const ac_trace_agent_end_t *data, int prett
     fprintf(f, "\"duration_ms\": %llu", (unsigned long long)data->duration_ms);
 }
 
-static void write_react_iter(FILE *f, const ac_trace_react_iter_t *data, int pretty) {
+static void write_iter(FILE *f, const ac_trace_iter_t *data, int pretty) {
     int indent = pretty ? 4 : 0;
     
     write_indent(f, indent, pretty);
@@ -211,7 +191,6 @@ static void write_llm_request(FILE *f, const ac_trace_llm_request_t *data, int p
     fprintf(f, "\"message_count\": %zu,", data->message_count);
     write_newline(f, pretty);
     
-    /* Write messages as raw JSON if provided */
     write_indent(f, indent, pretty);
     fputs("\"messages\": ", f);
     if (data->messages_json) {
@@ -222,7 +201,6 @@ static void write_llm_request(FILE *f, const ac_trace_llm_request_t *data, int p
     fputs(",", f);
     write_newline(f, pretty);
     
-    /* Write tools as raw JSON if provided */
     write_indent(f, indent, pretty);
     fputs("\"tools\": ", f);
     if (data->tools_json) {
@@ -245,7 +223,6 @@ static void write_llm_response(FILE *f, const ac_trace_llm_response_t *data, int
     fprintf(f, "\"tool_call_count\": %d,", data->tool_call_count);
     write_newline(f, pretty);
     
-    /* Write tool_calls as raw JSON if provided */
     write_indent(f, indent, pretty);
     fputs("\"tool_calls\": ", f);
     if (data->tool_calls_json) {
@@ -278,7 +255,7 @@ static void write_llm_response(FILE *f, const ac_trace_llm_response_t *data, int
     fprintf(f, "\"duration_ms\": %llu", (unsigned long long)data->duration_ms);
 }
 
-static void write_tool_call(FILE *f, const ac_trace_tool_call_t *data, int pretty) {
+static void write_tool_start(FILE *f, const ac_trace_tool_start_t *data, int pretty) {
     int indent = pretty ? 4 : 0;
     
     write_indent(f, indent, pretty);
@@ -296,13 +273,13 @@ static void write_tool_call(FILE *f, const ac_trace_tool_call_t *data, int prett
     write_indent(f, indent, pretty);
     fputs("\"arguments\": ", f);
     if (data->arguments) {
-        fputs(data->arguments, f);  /* Already JSON */
+        fputs(data->arguments, f);
     } else {
         fputs("{}", f);
     }
 }
 
-static void write_tool_result(FILE *f, const ac_trace_tool_result_t *data, int pretty) {
+static void write_tool_end(FILE *f, const ac_trace_tool_end_t *data, int pretty) {
     int indent = pretty ? 4 : 0;
     
     write_indent(f, indent, pretty);
@@ -320,7 +297,7 @@ static void write_tool_result(FILE *f, const ac_trace_tool_result_t *data, int p
     write_indent(f, indent, pretty);
     fputs("\"result\": ", f);
     if (data->result) {
-        fputs(data->result, f);  /* Already JSON */
+        fputs(data->result, f);
     } else {
         fputs("null", f);
     }
@@ -336,7 +313,7 @@ static void write_tool_result(FILE *f, const ac_trace_tool_result_t *data, int p
 }
 
 /*============================================================================
- * Trace Handler Implementation
+ * Trace Handler
  *============================================================================*/
 
 static void json_trace_handler(const ac_trace_event_t *event, void *user_data) {
@@ -349,9 +326,7 @@ static void json_trace_handler(const ac_trace_event_t *event, void *user_data) {
     
     /* Handle agent_start - open new file */
     if (event->type == AC_TRACE_AGENT_START) {
-        /* Close any existing file */
         if (state->file) {
-            /* Close events array and object */
             write_newline(state->file, pretty);
             write_indent(state->file, 1, pretty);
             fputs("]", state->file);
@@ -362,7 +337,6 @@ static void json_trace_handler(const ac_trace_event_t *event, void *user_data) {
             state->file = NULL;
         }
         
-        /* Generate filename */
         char ts_buf[32];
         format_file_timestamp(ts_buf, sizeof(ts_buf));
         
@@ -373,11 +347,9 @@ static void json_trace_handler(const ac_trace_event_t *event, void *user_data) {
                  agent_name,
                  ts_buf);
         
-        /* Store trace ID */
         snprintf(state->current_trace_id, sizeof(state->current_trace_id),
                  "%s", event->trace_id ? event->trace_id : "");
         
-        /* Open new file */
         state->file = fopen(state->current_path, "w");
         if (!state->file) {
             fprintf(stderr, "[TRACE] Failed to open %s: %s\n", 
@@ -387,7 +359,6 @@ static void json_trace_handler(const ac_trace_event_t *event, void *user_data) {
         
         state->event_count = 0;
         
-        /* Write JSON header */
         fputs("{", state->file);
         write_newline(state->file, pretty);
         
@@ -419,26 +390,22 @@ static void json_trace_handler(const ac_trace_event_t *event, void *user_data) {
     
     if (!state->file) return;
     
-    /* Write event separator */
     if (state->event_count > 0) {
         fputs(",", state->file);
     }
     write_newline(state->file, pretty);
     state->event_count++;
     
-    /* Write event object */
     write_indent(state->file, 2, pretty);
     fputs("{", state->file);
     write_newline(state->file, pretty);
     
-    /* Event type */
     write_indent(state->file, 3, pretty);
     fputs("\"type\": ", state->file);
     write_json_string(state->file, ac_trace_event_name(event->type));
     fputs(",", state->file);
     write_newline(state->file, pretty);
     
-    /* Timestamp */
     if (state->config.include_timestamps) {
         char iso_ts[64];
         format_iso_timestamp(event->timestamp_ms, iso_ts, sizeof(iso_ts));
@@ -453,12 +420,10 @@ static void json_trace_handler(const ac_trace_event_t *event, void *user_data) {
     fprintf(state->file, "\"timestamp_ms\": %llu,", (unsigned long long)event->timestamp_ms);
     write_newline(state->file, pretty);
     
-    /* Sequence */
     write_indent(state->file, 3, pretty);
     fprintf(state->file, "\"sequence\": %d,", event->sequence);
     write_newline(state->file, pretty);
     
-    /* Event data */
     write_indent(state->file, 3, pretty);
     fputs("\"data\": {", state->file);
     write_newline(state->file, pretty);
@@ -470,9 +435,9 @@ static void json_trace_handler(const ac_trace_event_t *event, void *user_data) {
         case AC_TRACE_AGENT_END:
             write_agent_end(state->file, &event->data.agent_end, pretty);
             break;
-        case AC_TRACE_REACT_ITER_START:
-        case AC_TRACE_REACT_ITER_END:
-            write_react_iter(state->file, &event->data.react_iter, pretty);
+        case AC_TRACE_ITER_START:
+        case AC_TRACE_ITER_END:
+            write_iter(state->file, &event->data.iter, pretty);
             break;
         case AC_TRACE_LLM_REQUEST:
             write_llm_request(state->file, &event->data.llm_request, pretty);
@@ -480,11 +445,11 @@ static void json_trace_handler(const ac_trace_event_t *event, void *user_data) {
         case AC_TRACE_LLM_RESPONSE:
             write_llm_response(state->file, &event->data.llm_response, pretty);
             break;
-        case AC_TRACE_TOOL_CALL:
-            write_tool_call(state->file, &event->data.tool_call, pretty);
+        case AC_TRACE_TOOL_START:
+            write_tool_start(state->file, &event->data.tool_start, pretty);
             break;
-        case AC_TRACE_TOOL_RESULT:
-            write_tool_result(state->file, &event->data.tool_result, pretty);
+        case AC_TRACE_TOOL_END:
+            write_tool_end(state->file, &event->data.tool_end, pretty);
             break;
     }
     
@@ -496,7 +461,6 @@ static void json_trace_handler(const ac_trace_event_t *event, void *user_data) {
     write_indent(state->file, 2, pretty);
     fputs("}", state->file);
     
-    /* Handle agent_end - close file */
     if (event->type == AC_TRACE_AGENT_END) {
         write_newline(state->file, pretty);
         write_indent(state->file, 1, pretty);
@@ -518,7 +482,6 @@ static void json_trace_handler(const ac_trace_event_t *event, void *user_data) {
 int ac_trace_json_exporter_init(const ac_trace_json_config_t *config) {
     memset(&s_state, 0, sizeof(s_state));
     
-    /* Apply configuration */
     if (config) {
         s_state.config = *config;
         if (!s_state.config.output_dir) {
@@ -531,16 +494,14 @@ int ac_trace_json_exporter_init(const ac_trace_json_config_t *config) {
         s_state.config.flush_after_event = AC_TRACE_JSON_DEFAULT_FLUSH;
     }
     
-    /* Ensure output directory exists */
     if (ensure_dir(s_state.config.output_dir) != 0) {
         fprintf(stderr, "[TRACE] Failed to create directory: %s\n", 
                 s_state.config.output_dir);
         return -1;
     }
     
-    /* Set up trace handler */
-    ac_trace_set_handler(json_trace_handler, NULL);
-    ac_trace_set_level(AC_TRACE_LEVEL_DETAILED);
+    /* Enable tracing with our handler */
+    ac_trace_enable(json_trace_handler, NULL);
     
     s_state.initialized = 1;
     
@@ -549,7 +510,6 @@ int ac_trace_json_exporter_init(const ac_trace_json_config_t *config) {
 
 void ac_trace_json_exporter_cleanup(void) {
     if (s_state.file) {
-        /* Write closing brackets if file is still open */
         int pretty = s_state.config.pretty_print;
         write_newline(s_state.file, pretty);
         write_indent(s_state.file, 1, pretty);
@@ -561,8 +521,7 @@ void ac_trace_json_exporter_cleanup(void) {
         s_state.file = NULL;
     }
     
-    ac_trace_set_handler(NULL, NULL);
-    ac_trace_set_level(AC_TRACE_LEVEL_OFF);
+    ac_trace_disable();
     
     memset(&s_state, 0, sizeof(s_state));
 }
@@ -575,12 +534,11 @@ const char *ac_trace_json_exporter_get_path(void) {
 }
 
 /*============================================================================
- * Console Exporter Implementation
+ * Console Exporter
  *============================================================================*/
 
 static ac_trace_console_config_t s_console_config = {0};
 
-/* ANSI color codes */
 #define ANSI_RESET   "\033[0m"
 #define ANSI_BOLD    "\033[1m"
 #define ANSI_DIM     "\033[2m"
@@ -595,14 +553,14 @@ static const char *get_event_color(ac_trace_event_type_t type) {
         case AC_TRACE_AGENT_START:
         case AC_TRACE_AGENT_END:
             return ANSI_BOLD ANSI_GREEN;
-        case AC_TRACE_REACT_ITER_START:
-        case AC_TRACE_REACT_ITER_END:
+        case AC_TRACE_ITER_START:
+        case AC_TRACE_ITER_END:
             return ANSI_CYAN;
         case AC_TRACE_LLM_REQUEST:
         case AC_TRACE_LLM_RESPONSE:
             return ANSI_BLUE;
-        case AC_TRACE_TOOL_CALL:
-        case AC_TRACE_TOOL_RESULT:
+        case AC_TRACE_TOOL_START:
+        case AC_TRACE_TOOL_END:
             return ANSI_MAGENTA;
         default:
             return "";
@@ -642,11 +600,11 @@ static void console_trace_handler(const ac_trace_event_t *event, void *user_data
                     (unsigned long long)event->data.agent_end.duration_ms);
             break;
             
-        case AC_TRACE_REACT_ITER_START:
-        case AC_TRACE_REACT_ITER_END:
+        case AC_TRACE_ITER_START:
+        case AC_TRACE_ITER_END:
             fprintf(stderr, "Iteration: %d/%d",
-                    event->data.react_iter.iteration,
-                    event->data.react_iter.max_iterations);
+                    event->data.iter.iteration,
+                    event->data.iter.max_iterations);
             break;
             
         case AC_TRACE_LLM_REQUEST:
@@ -665,19 +623,19 @@ static void console_trace_handler(const ac_trace_event_t *event, void *user_data
                     (unsigned long long)event->data.llm_response.duration_ms);
             break;
             
-        case AC_TRACE_TOOL_CALL:
+        case AC_TRACE_TOOL_START:
             fprintf(stderr, "%s(%.60s%s)",
-                    event->data.tool_call.name ? event->data.tool_call.name : "?",
-                    event->data.tool_call.arguments ? event->data.tool_call.arguments : "{}",
-                    (event->data.tool_call.arguments && strlen(event->data.tool_call.arguments) > 60) ? "..." : "");
+                    event->data.tool_start.name ? event->data.tool_start.name : "?",
+                    event->data.tool_start.arguments ? event->data.tool_start.arguments : "{}",
+                    (event->data.tool_start.arguments && strlen(event->data.tool_start.arguments) > 60) ? "..." : "");
             break;
             
-        case AC_TRACE_TOOL_RESULT:
+        case AC_TRACE_TOOL_END:
             fprintf(stderr, "%s -> %.60s%s (%llums)",
-                    event->data.tool_result.name ? event->data.tool_result.name : "?",
-                    event->data.tool_result.result ? event->data.tool_result.result : "null",
-                    (event->data.tool_result.result && strlen(event->data.tool_result.result) > 60) ? "..." : "",
-                    (unsigned long long)event->data.tool_result.duration_ms);
+                    event->data.tool_end.name ? event->data.tool_end.name : "?",
+                    event->data.tool_end.result ? event->data.tool_end.result : "null",
+                    (event->data.tool_end.result && strlen(event->data.tool_end.result) > 60) ? "..." : "",
+                    (unsigned long long)event->data.tool_end.duration_ms);
             break;
     }
     
@@ -693,14 +651,12 @@ int ac_trace_console_exporter_init(const ac_trace_console_config_t *config) {
         s_console_config.show_json_data = 0;
     }
     
-    ac_trace_set_handler(console_trace_handler, NULL);
-    ac_trace_set_level(AC_TRACE_LEVEL_DETAILED);
+    ac_trace_enable(console_trace_handler, NULL);
     
     return 0;
 }
 
 void ac_trace_console_exporter_cleanup(void) {
-    ac_trace_set_handler(NULL, NULL);
-    ac_trace_set_level(AC_TRACE_LEVEL_OFF);
+    ac_trace_disable();
     memset(&s_console_config, 0, sizeof(s_console_config));
 }

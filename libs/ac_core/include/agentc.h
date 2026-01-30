@@ -40,6 +40,7 @@
 #include "agentc/arena.h"
 #include "agentc/session.h"
 #include "agentc/agent.h"
+#include "agentc/agent_hooks.h"
 #include "agentc/tool.h"
 #include "agentc/mcp.h"
 #include "agentc/llm.h"
