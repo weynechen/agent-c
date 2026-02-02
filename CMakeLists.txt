@@ -179,7 +179,7 @@ if(ARC_BUILD_TESTS)
 endif()
 
 if(ARC_BUILD_EXTRAS AND ARC_PROFILE STREQUAL "hosted")
-    add_subdirectory(extras/minimal_cli)
+    add_subdirectory(extras/arc-cli)
 endif()
 
 # Install
