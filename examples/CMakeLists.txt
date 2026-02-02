@@ -176,6 +176,29 @@ if(ARC_USE_CURL)
   target_link_libraries(chat_skills PRIVATE CURL::libcurl)
 endif()
 
+# Example: Git commit message generator using skills
+add_executable(chat_git_commit hosted/chat_git_commit.c)
+target_link_libraries(chat_git_commit PRIVATE
+    ac_core::ac_core
+    ac_hosted::ac_hosted
+    arc_dotenv
+)
+target_include_directories(chat_git_commit PRIVATE
+    ${CJSON_INCLUDE}
+    ${CMAKE_SOURCE_DIR}/libs/ac_hosted/include
+)
+if(ARC_USE_CURL)
+  target_link_libraries(chat_git_commit PRIVATE CURL::libcurl)
+endif()
+
+# Copy skills directory for chat_git_commit
+add_custom_command(TARGET chat_git_commit POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_CURRENT_SOURCE_DIR}/hosted/skills
+    ${CMAKE_CURRENT_BINARY_DIR}/skills
+    COMMENT "Copying skills to build directory for chat_git_commit"
+)
+
 # Test: Skills system unit test (no LLM required)
 add_executable(test_skills hosted/test_skills.c)
 target_link_libraries(test_skills PRIVATE
@@ -208,4 +231,4 @@ add_custom_command(TARGET chat_skills POST_BUILD
 # endif()
 message(STATUS "chat_tui: Temporarily disabled (needs API rewrite)")
 
-message(STATUS "ArC Examples: hello, chat_demo, chat_tools, chat_mcp, chat_markdown, chat_trace, chat_multi_agent, chat_skills")
+message(STATUS "ArC Examples: hello, chat_demo, chat_tools, chat_mcp, chat_markdown, chat_trace, chat_multi_agent, chat_skills, chat_git_commit")
