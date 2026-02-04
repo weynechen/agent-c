@@ -61,11 +61,11 @@ add_custom_target(arc_coder_prompts DEPENDS ${PROMPT_OUTPUT} ${PROMPT_HEADER})
 #============================================================================
 
 if(TARGET moc)
-    set(CODE_ARC_STANDALONE OFF)
+    set(ARC_CODER_STANDALONE OFF)
     set(MOC_EXECUTABLE $<TARGET_FILE:moc>)
-    message(STATUS "Code ArC: Building as part of main project")
+    message(STATUS "arc coder : Building as part of main project")
 else()
-    set(CODE_ARC_STANDALONE ON)
+    set(ARC_CODER_STANDALONE ON)
     find_program(MOC_EXECUTABLE moc
         PATHS
             "${ARC_ROOT}/build/tools/moc"
@@ -83,7 +83,7 @@ else()
             "  make moc\n"
         )
     endif()
-    message(STATUS "Code ArC: Standalone build using MOC at ${MOC_EXECUTABLE}")
+    message(STATUS "arc coder: Standalone build using MOC at ${MOC_EXECUTABLE}")
 endif()
 
 #============================================================================
@@ -96,7 +96,7 @@ set(MOC_OUTPUT_HEADER "${MOC_OUTPUT_BASE}.h")
 set(MOC_OUTPUT_SOURCE "${MOC_OUTPUT_BASE}.c")
 
 # In standalone mode, moc is an external executable, not a target
-if(CODE_ARC_STANDALONE)
+if(ARC_CODER_STANDALONE)
     add_custom_command(
         OUTPUT ${MOC_OUTPUT_HEADER} ${MOC_OUTPUT_SOURCE}
         COMMAND ${MOC_EXECUTABLE} ${MOC_INPUT} -o ${MOC_OUTPUT_BASE}
@@ -122,7 +122,7 @@ endif()
 # Source Files
 #============================================================================
 
-set(CODE_ARC_SOURCES
+set(ARC_CODER_SOURCES
     # Core
     src/code_agent.c
     src/prompt_loader.c
@@ -150,7 +150,7 @@ set(CODE_ARC_SOURCES
 # Executable
 #============================================================================
 
-add_executable(arc_coder ${CODE_ARC_SOURCES})
+add_executable(arc_coder ${ARC_CODER_SOURCES})
 
 # Ensure dependencies run before compilation
 add_dependencies(arc_coder arc_coder_moc arc_coder_prompts)
@@ -159,7 +159,7 @@ add_dependencies(arc_coder arc_coder_moc arc_coder_prompts)
 # Link Libraries
 #============================================================================
 
-if(CODE_ARC_STANDALONE)
+if(ARC_CODER_STANDALONE)
     find_library(AC_CORE_LIB ac_core
         PATHS
             "${ARC_ROOT}/build/libs/ac_core"
@@ -229,5 +229,5 @@ message(STATUS "Code ArC Configuration:")
 message(STATUS "  Version: ${PROJECT_VERSION}")
 message(STATUS "  C Standard: C${CMAKE_C_STANDARD}")
 message(STATUS "  ArC Root: ${ARC_ROOT}")
-message(STATUS "  Standalone: ${CODE_ARC_STANDALONE}")
+message(STATUS "  Standalone: ${ARC_CODER_STANDALONE}")
 message(STATUS "  Prompt Dir: ${PROMPT_DIR}")
