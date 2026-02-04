@@ -231,6 +231,20 @@ if(ARC_USE_CURL)
   target_link_libraries(chat_stream PRIVATE CURL::libcurl)
 endif()
 
+# Example: Kimi K2.5 streaming chat with reasoning_content support
+add_executable(chat_kimi2.5 hosted/chat_kimi2.5.c)
+target_link_libraries(chat_kimi2.5 PRIVATE
+    ac_core::ac_core
+    ac_hosted::ac_hosted
+)
+target_include_directories(chat_kimi2.5 PRIVATE
+    ${CJSON_INCLUDE}
+    ${CMAKE_SOURCE_DIR}/libs/ac_hosted/include
+)
+if(ARC_USE_CURL)
+  target_link_libraries(chat_kimi2.5 PRIVATE CURL::libcurl)
+endif()
+
 # Example 10: Streaming chat with tool calling
 add_executable(chat_stream_tools
     hosted/chat_stream_tools.c
@@ -270,4 +284,4 @@ endif()
 # endif()
 message(STATUS "chat_tui: Temporarily disabled (needs API rewrite)")
 
-message(STATUS "ArC Examples: hello, chat_demo, chat_tools, chat_mcp, chat_markdown, chat_trace, chat_multi_agent, chat_skills, chat_git_commit, chat_stream, chat_stream_tools")
+message(STATUS "ArC Examples: hello, chat_demo, chat_tools, chat_mcp, chat_markdown, chat_trace, chat_multi_agent, chat_skills, chat_git_commit, chat_stream, chat_stream_tools, chat_kimi2.5")
