@@ -1,11 +1,11 @@
 /**
  * @file chat_stream.c
- * @brief Streaming chat demo with thinking support
+ * @brief Streaming chat demo with thinking support using Agent API
  *
  * Demonstrates:
- * - Streaming LLM responses (real-time token output)
+ * - Agent API with streaming mode
  * - Extended thinking mode (Claude thinking blocks)
- * - Direct LLM API usage (without Agent abstraction)
+ * - Automatic message history management
  *
  * Usage:
  *   1. Create .env file with ANTHROPIC_API_KEY=sk-xxx
@@ -23,15 +23,12 @@
 #include <string.h>
 #include <signal.h>
 #include <arc.h>
-#include <arc/llm.h>
-#include <arc/arena.h>
 #include <arc/env.h>
 
 #define MAX_INPUT_LEN 4096
 #define DEFAULT_MODEL "claude-sonnet-4-5-20250514"
 
 static volatile int g_running = 1;
-static int g_thinking_mode = 0;
 static int g_show_thinking = 1;
 
 /* ANSI color codes */
@@ -50,7 +47,6 @@ static void signal_handler(int sig) {
 static void print_usage(void) {
     printf("\nCommands:\n");
     printf("  /help      - Show this help\n");
-    printf("  /thinking  - Toggle thinking mode\n");
     printf("  /show      - Toggle showing thinking content\n");
     printf("  /quit      - Exit\n\n");
 }
@@ -88,8 +84,6 @@ static int stream_callback(const ac_stream_event_t* event, void* user_data) {
                 } else if (event->delta_type == AC_DELTA_TEXT) {
                     printf("%.*s", (int)event->delta_len, event->delta);
                     fflush(stdout);
-                } else if (event->delta_type == AC_DELTA_INPUT_JSON) {
-                    /* Tool input JSON delta - can show if needed */
                 }
             }
             break;
@@ -139,53 +133,58 @@ int main(int argc, char *argv[]) {
     /* Get optional settings */
     const char *model = ac_env_get("ANTHROPIC_MODEL", DEFAULT_MODEL);
     const char *base_url = ac_env_get("ANTHROPIC_BASE_URL", NULL);
-    g_thinking_mode = atoi(ac_env_get("ENABLE_THINKING", "0"));
+    int thinking_mode = atoi(ac_env_get("ENABLE_THINKING", "0"));
     int thinking_budget = atoi(ac_env_get("THINKING_BUDGET", "10000"));
 
     /* Setup signal handler */
     signal(SIGINT, signal_handler);
 
-    /* Create arena for memory management */
-    arena_t *arena = arena_create(1024 * 1024);  /* 1MB arena */
-    if (!arena) {
-        fprintf(stderr, "Failed to create arena\n");
+    /* Create session */
+    ac_session_t *session = ac_session_open();
+    if (!session) {
+        fprintf(stderr, "Failed to create session\n");
         return 1;
     }
 
-    /* Create LLM with streaming support */
-    ac_llm_params_t llm_params = {
-        .provider = "anthropic",
-        .model = model,
-        .api_key = api_key,
-        .api_base = base_url,  
+    /* Create agent with streaming enabled */
+    ac_agent_t *agent = ac_agent_create(session, &(ac_agent_params_t){
+        .name = "StreamBot",
         .instructions = "You are a helpful assistant. Be concise and clear.",
-        .max_tokens = 4096,
-        .timeout_ms = 120000,  /* 2 minutes for streaming */
-        .thinking = {
-            .enabled = g_thinking_mode,
-            .budget_tokens = thinking_budget,
+        .llm = {
+            .provider = "anthropic",
+            .model = model,
+            .api_key = api_key,
+            .api_base = base_url,
+            .max_tokens = 4096,
+            .timeout_ms = 120000,  /* 2 minutes for streaming */
+            .thinking = {
+                .enabled = thinking_mode,
+                .budget_tokens = thinking_budget,
+            },
+            .stream = 1,
         },
-        .stream = 1,
-    };
+        .callbacks = {
+            .on_stream = stream_callback,
+            .user_data = NULL
+        }
+    });
 
-    ac_llm_t *llm = ac_llm_create(arena, &llm_params);
-    if (!llm) {
-        fprintf(stderr, "Failed to create LLM\n");
-        arena_destroy(arena);
+    if (!agent) {
+        fprintf(stderr, "Failed to create agent\n");
+        ac_session_close(session);
         return 1;
     }
 
-    printf("\n=== ArC Streaming Chat Demo ===\n");
+    printf("\n=== ArC Streaming Chat Demo (Agent API) ===\n");
     printf("Model: %s\n", model);
     printf("Provider: anthropic\n");
-    printf("Thinking mode: %s\n", g_thinking_mode ? "ON" : "OFF");
-    if (g_thinking_mode) {
+    printf("Thinking mode: %s\n", thinking_mode ? "ON" : "OFF");
+    if (thinking_mode) {
         printf("Thinking budget: %d tokens\n", thinking_budget);
     }
     printf("Type /help for commands, /quit to exit\n\n");
 
     char input[MAX_INPUT_LEN];
-    ac_message_t *messages = NULL;
 
     while (g_running) {
         printf("%sYou: %s", COLOR_PROMPT, COLOR_RESET);
@@ -213,12 +212,6 @@ int main(int argc, char *argv[]) {
             } else if (strcmp(input, "/help") == 0) {
                 print_usage();
                 continue;
-            } else if (strcmp(input, "/thinking") == 0) {
-                g_thinking_mode = !g_thinking_mode;
-                llm_params.thinking.enabled = g_thinking_mode;
-                ac_llm_update_params(llm, &llm_params);
-                printf("[Thinking mode: %s]\n", g_thinking_mode ? "ON" : "OFF");
-                continue;
             } else if (strcmp(input, "/show") == 0) {
                 g_show_thinking = !g_show_thinking;
                 printf("[Show thinking: %s]\n", g_show_thinking ? "ON" : "OFF");
@@ -229,39 +222,21 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        /* Add user message */
-        ac_message_t *user_msg = ac_message_create(arena, AC_ROLE_USER, input);
-        ac_message_append(&messages, user_msg);
-
         printf("%sAssistant: %s", COLOR_PROMPT, COLOR_RESET);
         fflush(stdout);
 
-        /* Call LLM with streaming */
-        ac_chat_response_t response = {0};
-        arc_err_t err = ac_llm_chat_stream(llm, messages, NULL, stream_callback, NULL, &response);
+        /* Run agent - streaming happens via callback */
+        ac_agent_result_t *result = ac_agent_run(agent, input);
 
-        if (err != ARC_OK) {
-            printf("[Error: %s]\n", ac_strerror(err));
-        } else {
-            /* Add assistant response to history */
-            ac_message_t *assistant_msg = ac_message_from_response(arena, &response);
-            if (assistant_msg) {
-                ac_message_append(&messages, assistant_msg);
-            }
-            
-            /* Show usage if available */
-            if (response.output_tokens > 0) {
-                printf("%s[tokens: %d]%s\n", COLOR_INFO, response.output_tokens, COLOR_RESET);
-            }
+        if (!result) {
+            printf("[Error: Agent run failed]\n");
         }
 
-        ac_chat_response_free(&response);
         printf("\n");
     }
 
-    /* Cleanup */
-    ac_llm_cleanup(llm);
-    arena_destroy(arena);
+    /* Cleanup - session handles everything */
+    ac_session_close(session);
 
     printf("Goodbye!\n");
     return 0;

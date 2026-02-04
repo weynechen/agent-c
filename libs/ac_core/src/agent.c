@@ -47,6 +47,10 @@ typedef struct {
     /* Cached tools schema (built once at creation) */
     char *cached_tools_schema;
 
+    /* Streaming callbacks */
+    ac_stream_callback_t stream_callback;
+    void *callback_user_data;
+
     /* Statistics for hooks */
     uint64_t run_start_time_ms;
     int total_prompt_tokens;
@@ -413,6 +417,339 @@ static ac_agent_result_t *agent_run_impl(agent_priv_t *priv, const char *message
 }
 
 /*============================================================================
+ * Agent Run Implementation (Streaming Mode)
+ *============================================================================*/
+
+/**
+ * @brief Check if response has tool use blocks
+ */
+static int response_has_tool_use(const ac_chat_response_t* response) {
+    if (!response) return 0;
+    for (ac_content_block_t* b = response->blocks; b; b = b->next) {
+        if (b->type == AC_BLOCK_TOOL_USE) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/**
+ * @brief Execute tool from content block and return result
+ */
+static char *execute_tool_block(agent_priv_t *priv, const ac_content_block_t *block) {
+    if (!block || !block->name) {
+        return strdup("{\"error\":\"Invalid tool block\"}");
+    }
+
+    if (!priv->tools) {
+        AC_LOG_WARN("No tool registry configured");
+        return strdup("{\"error\":\"No tools available\"}");
+    }
+
+    ac_tool_ctx_t ctx = {
+        .session_id = NULL,
+        .working_dir = NULL,
+        .user_data = NULL
+    };
+
+    AC_LOG_INFO("Executing tool: %s(%s)", block->name,
+                block->input ? block->input : "{}");
+
+    /* Hook: tool start */
+    uint64_t tool_start_ms = ac_platform_timestamp_ms();
+    {
+        ac_hook_tool_start_t hook_info = {
+            .agent_name = priv->name,
+            .id = block->id,
+            .name = block->name,
+            .arguments = block->input
+        };
+        AC_HOOK_CALL(ac_hook_call_tool_start, &hook_info);
+    }
+
+    /* Execute */
+    char *result = ac_tool_registry_call(
+        priv->tools,
+        block->name,
+        block->input ? block->input : "{}",
+        &ctx
+    );
+
+    AC_LOG_DEBUG("Tool %s returned: %s", block->name, result ? result : "NULL");
+
+    /* Hook: tool end */
+    uint64_t tool_end_ms = ac_platform_timestamp_ms();
+    {
+        ac_hook_tool_end_t hook_info = {
+            .agent_name = priv->name,
+            .id = block->id,
+            .name = block->name,
+            .result = result,
+            .duration_ms = tool_end_ms - tool_start_ms,
+            .success = (result != NULL && strstr(result, "\"error\"") == NULL) ? 1 : 0
+        };
+        AC_HOOK_CALL(ac_hook_call_tool_end, &hook_info);
+    }
+
+    return result ? result : strdup("{\"error\":\"Tool returned NULL\"}");
+}
+
+/**
+ * @brief Create tool result message from response blocks
+ */
+static ac_message_t* create_tool_results_message(agent_priv_t *priv, const ac_chat_response_t* response) {
+    if (!response || !response->blocks) return NULL;
+
+    /* Create tool result message (user role for Anthropic API) */
+    ac_message_t* result_msg = (ac_message_t*)arena_alloc(priv->arena, sizeof(ac_message_t));
+    if (!result_msg) return NULL;
+    memset(result_msg, 0, sizeof(ac_message_t));
+    result_msg->role = AC_ROLE_USER;
+
+    ac_content_block_t* last_block = NULL;
+
+    for (ac_content_block_t* b = response->blocks; b; b = b->next) {
+        if (b->type != AC_BLOCK_TOOL_USE) continue;
+        if (!b->id || !b->name) continue;
+
+        /* Execute the tool */
+        char* tool_result = execute_tool_block(priv, b);
+        int is_error = (tool_result && strstr(tool_result, "\"error\"") != NULL);
+
+        /* Create tool_result content block */
+        ac_content_block_t* result_block = (ac_content_block_t*)arena_alloc(priv->arena, sizeof(ac_content_block_t));
+        if (!result_block) {
+            if (tool_result) free(tool_result);
+            continue;
+        }
+        memset(result_block, 0, sizeof(ac_content_block_t));
+        result_block->type = AC_BLOCK_TOOL_RESULT;
+        result_block->id = arena_strdup(priv->arena, b->id);
+        result_block->text = arena_strdup(priv->arena, tool_result ? tool_result : "{}");
+        result_block->is_error = is_error;
+
+        if (tool_result) free(tool_result);
+
+        /* Append to result message */
+        if (!result_msg->blocks) {
+            result_msg->blocks = result_block;
+        } else {
+            last_block->next = result_block;
+        }
+        last_block = result_block;
+    }
+
+    return result_msg->blocks ? result_msg : NULL;
+}
+
+static ac_agent_result_t *agent_run_stream_impl(agent_priv_t *priv, const char *message) {
+    if (!priv || !priv->arena || !priv->llm) {
+        return NULL;
+    }
+
+    /* Initialize run statistics */
+    priv->run_start_time_ms = ac_platform_timestamp_ms();
+    priv->total_prompt_tokens = 0;
+    priv->total_completion_tokens = 0;
+
+    size_t tool_count = priv->tools ? ac_tool_registry_count(priv->tools) : 0;
+
+    /* Hook: run start */
+    {
+        ac_hook_run_start_t hook_info = {
+            .agent_name = priv->name,
+            .message = message,
+            .instructions = priv->instructions,
+            .max_iterations = priv->max_iterations,
+            .tool_count = tool_count
+        };
+        AC_HOOK_CALL(ac_hook_call_run_start, &hook_info);
+    }
+
+    /* Add system message if this is the first message */
+    if (!priv->messages && priv->instructions) {
+        ac_message_t *sys_msg = ac_message_create(
+            priv->arena, AC_ROLE_SYSTEM, priv->instructions
+        );
+        if (sys_msg) {
+            agent_append_message(priv, sys_msg);
+        }
+    }
+
+    /* Add user message to history */
+    ac_message_t *user_msg = ac_message_create(priv->arena, AC_ROLE_USER, message);
+    if (!user_msg) {
+        AC_LOG_ERROR("Failed to create user message");
+        return NULL;
+    }
+    agent_append_message(priv, user_msg);
+
+    AC_LOG_DEBUG("Added user message, total messages: %zu", priv->message_count);
+
+    /* Use cached tools schema */
+    char *tools_schema = priv->cached_tools_schema;
+
+    /* ReACT loop with streaming */
+    char *final_content = NULL;
+    int iteration = 0;
+
+    while (iteration < priv->max_iterations) {
+        iteration++;
+        AC_LOG_DEBUG("ReACT streaming iteration %d/%d", iteration, priv->max_iterations);
+
+        /* Hook: iteration start */
+        {
+            ac_hook_iter_t hook_info = {
+                .agent_name = priv->name,
+                .iteration = iteration,
+                .max_iterations = priv->max_iterations
+            };
+            AC_HOOK_CALL(ac_hook_call_iter_start, &hook_info);
+        }
+
+        uint64_t llm_start_ms = ac_platform_timestamp_ms();
+
+        /* Hook: LLM request */
+        {
+            ac_hook_llm_request_t hook_info = {
+                .agent_name = priv->name,
+                .model = NULL,
+                .messages = priv->messages,
+                .tools_schema = tools_schema,
+                .message_count = priv->message_count
+            };
+            AC_HOOK_CALL(ac_hook_call_llm_request, &hook_info);
+        }
+
+        /* Call LLM with streaming */
+        ac_chat_response_t response = {0};
+        arc_err_t err = ac_llm_chat_stream(
+            priv->llm,
+            priv->messages,
+            tools_schema,
+            priv->stream_callback,
+            priv->callback_user_data,
+            &response
+        );
+
+        uint64_t llm_end_ms = ac_platform_timestamp_ms();
+
+        /* Hook: LLM response */
+        {
+            ac_hook_llm_response_t hook_info = {
+                .agent_name = priv->name,
+                .content = response.content,
+                .tool_calls = NULL,
+                .tool_call_count = 0,
+                .prompt_tokens = response.input_tokens,
+                .completion_tokens = response.output_tokens,
+                .total_tokens = response.input_tokens + response.output_tokens,
+                .finish_reason = response.stop_reason,
+                .duration_ms = llm_end_ms - llm_start_ms
+            };
+            AC_HOOK_CALL(ac_hook_call_llm_response, &hook_info);
+        }
+
+        /* Accumulate token usage */
+        priv->total_prompt_tokens += response.input_tokens;
+        priv->total_completion_tokens += response.output_tokens;
+
+        if (err != ARC_OK) {
+            AC_LOG_ERROR("LLM streaming chat failed: %d", err);
+            ac_chat_response_free(&response);
+            return NULL;
+        }
+
+        /* Check if there are tool use blocks */
+        if (response_has_tool_use(&response)) {
+            AC_LOG_INFO("LLM requested tool calls (streaming mode)");
+
+            /* Add assistant response to history */
+            ac_message_t *asst_msg = ac_message_from_response(priv->arena, &response);
+            if (asst_msg) {
+                agent_append_message(priv, asst_msg);
+            }
+
+            /* Execute tools and create result message */
+            ac_message_t *tool_result_msg = create_tool_results_message(priv, &response);
+            if (tool_result_msg) {
+                agent_append_message(priv, tool_result_msg);
+            }
+
+            /* Hook: iteration end */
+            {
+                ac_hook_iter_t hook_info = {
+                    .agent_name = priv->name,
+                    .iteration = iteration,
+                    .max_iterations = priv->max_iterations
+                };
+                AC_HOOK_CALL(ac_hook_call_iter_end, &hook_info);
+            }
+
+            ac_chat_response_free(&response);
+            continue;
+        }
+
+        /* No tool calls - we have the final response */
+        if (response.content) {
+            final_content = arena_strdup(priv->arena, response.content);
+
+            ac_message_t *asst_msg = ac_message_from_response(priv->arena, &response);
+            if (asst_msg) {
+                agent_append_message(priv, asst_msg);
+            }
+        }
+
+        /* Hook: iteration end */
+        {
+            ac_hook_iter_t hook_info = {
+                .agent_name = priv->name,
+                .iteration = iteration,
+                .max_iterations = priv->max_iterations
+            };
+            AC_HOOK_CALL(ac_hook_call_iter_end, &hook_info);
+        }
+
+        ac_chat_response_free(&response);
+        break;
+    }
+
+    if (iteration >= priv->max_iterations && !final_content) {
+        AC_LOG_WARN("ReACT loop reached max iterations (%d)", priv->max_iterations);
+    }
+
+    /* Hook: run end */
+    uint64_t run_end_ms = ac_platform_timestamp_ms();
+    {
+        ac_hook_run_end_t hook_info = {
+            .agent_name = priv->name,
+            .content = final_content,
+            .iterations = iteration,
+            .total_prompt_tokens = priv->total_prompt_tokens,
+            .total_completion_tokens = priv->total_completion_tokens,
+            .duration_ms = run_end_ms - priv->run_start_time_ms
+        };
+        AC_HOOK_CALL(ac_hook_call_run_end, &hook_info);
+    }
+
+    /* Allocate result from agent's arena */
+    ac_agent_result_t *result = (ac_agent_result_t *)arena_alloc(
+        priv->arena, sizeof(ac_agent_result_t)
+    );
+
+    if (!result) {
+        AC_LOG_ERROR("Failed to allocate result from arena");
+        return NULL;
+    }
+
+    result->content = final_content;
+
+    AC_LOG_DEBUG("Agent streaming run completed after %d iterations, total messages: %zu",
+                 iteration, priv->message_count);
+    return result;
+}
+
+/*============================================================================
  * Public API
  *============================================================================*/
 
@@ -483,6 +820,10 @@ ac_agent_t *ac_agent_create(ac_session_t *session, const ac_agent_params_t *para
         }
     }
 
+    /* Store streaming callbacks */
+    priv->stream_callback = params->callbacks.on_stream;
+    priv->callback_user_data = params->callbacks.user_data;
+
     agent->priv = priv;
 
     if (ac_session_add_agent(session, agent) != ARC_OK) {
@@ -493,10 +834,11 @@ ac_agent_t *ac_agent_create(ac_session_t *session, const ac_agent_params_t *para
         return NULL;
     }
 
-    AC_LOG_INFO("Agent created: %s (arena=%zuKB, max_iter=%d)",
+    AC_LOG_INFO("Agent created: %s (arena=%zuKB, max_iter=%d, stream=%s)",
                 priv->name ? priv->name : "unnamed",
                 DEFAULT_ARENA_SIZE / 1024,
-                priv->max_iterations);
+                priv->max_iterations,
+                priv->stream_callback ? "yes" : "no");
 
     return agent;
 }
@@ -505,6 +847,11 @@ ac_agent_result_t *ac_agent_run(ac_agent_t *agent, const char *message) {
     if (!agent || !agent->priv || !message) {
         AC_LOG_ERROR("Invalid arguments to ac_agent_run");
         return NULL;
+    }
+
+    /* Use streaming mode if callback is configured */
+    if (agent->priv->stream_callback) {
+        return agent_run_stream_impl(agent->priv, message);
     }
 
     return agent_run_impl(agent->priv, message);

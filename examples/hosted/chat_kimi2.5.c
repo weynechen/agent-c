@@ -1,11 +1,11 @@
 /**
  * @file chat_kimi2.5.c
- * @brief Kimi K2.5 Streaming chat demo with thinking (reasoning_content) support
+ * @brief Kimi K2.5 Streaming chat demo with thinking (reasoning_content) support using Agent API
  *
  * Demonstrates:
- * - Streaming LLM responses using OpenAI-compatible API
+ * - Agent API with streaming mode for OpenAI-compatible providers
  * - Kimi K2.5 thinking mode (reasoning_content field)
- * - Direct LLM API usage (without Agent abstraction)
+ * - Automatic message history management
  *
  * Usage:
  *   1. Create .env file with MOONSHOT_API_KEY=sk-xxx
@@ -13,7 +13,7 @@
  *
  * Environment variables:
  *   MOONSHOT_API_KEY   - Required: Moonshot/Kimi API key
- *   MOONSHOT_MODEL     - Optional: Model name (default: kimi-k2.5-0711)
+ *   MOONSHOT_MODEL     - Optional: Model name (default: kimi-k2-thinking)
  *   MOONSHOT_BASE_URL  - Optional: API base URL (default: https://api.moonshot.cn/v1)
  *
  * API Reference:
@@ -29,8 +29,6 @@
 #include <string.h>
 #include <signal.h>
 #include <arc.h>
-#include <arc/llm.h>
-#include <arc/arena.h>
 #include <arc/env.h>
 
 #define MAX_INPUT_LEN 4096
@@ -58,7 +56,6 @@ static void print_usage(void) {
     printf("\nCommands:\n");
     printf("  /help      - Show this help\n");
     printf("  /show      - Toggle showing thinking/reasoning content\n");
-    printf("  /clear     - Clear conversation history\n");
     printf("  /quit      - Exit\n\n");
 }
 
@@ -120,8 +117,6 @@ static int stream_callback(const ac_stream_event_t* event, void* user_data) {
                     /* Text content - use reset/default color */
                     printf("%s%.*s", COLOR_RESET, (int)event->delta_len, event->delta);
                     fflush(stdout);
-                } else if (event->delta_type == AC_DELTA_INPUT_JSON) {
-                    /* Tool input JSON delta - can show if needed */
                 }
             }
             break;
@@ -162,7 +157,6 @@ int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
 
-    // ac_log_set_level(AC_LOG_LEVEL_DEBUG);
     /* Load environment */
     ac_env_load_verbose(NULL);
 
@@ -183,33 +177,39 @@ int main(int argc, char *argv[]) {
     /* Setup signal handler */
     signal(SIGINT, signal_handler);
 
-    /* Create arena for memory management */
-    arena_t *arena = arena_create(1024 * 1024);  /* 1MB arena */
-    if (!arena) {
-        fprintf(stderr, "Failed to create arena\n");
+    /* Create session */
+    ac_session_t *session = ac_session_open();
+    if (!session) {
+        fprintf(stderr, "Failed to create session\n");
         return 1;
     }
 
-    /* Create LLM with streaming support */
-    ac_llm_params_t llm_params = {
-        .provider = "openai",           /* Use OpenAI-compatible provider */
-        .model = model,
-        .api_key = api_key,
-        .api_base = base_url,
+    /* Create agent with streaming enabled */
+    ac_agent_t *agent = ac_agent_create(session, &(ac_agent_params_t){
+        .name = "KimiBot",
         .instructions = "You are Kimi, a helpful AI assistant. Be concise and clear in your responses.",
-        .max_tokens = 8192,
-        .timeout_ms = 120000,           /* 2 minutes for streaming */
-        .stream = 1,
-    };
+        .llm = {
+            .provider = "openai",           /* Use OpenAI-compatible provider */
+            .model = model,
+            .api_key = api_key,
+            .api_base = base_url,
+            .max_tokens = 8192,
+            .timeout_ms = 120000,           /* 2 minutes for streaming */
+            .stream = 1,
+        },
+        .callbacks = {
+            .on_stream = stream_callback,
+            .user_data = NULL
+        }
+    });
 
-    ac_llm_t *llm = ac_llm_create(arena, &llm_params);
-    if (!llm) {
-        fprintf(stderr, "Failed to create LLM\n");
-        arena_destroy(arena);
+    if (!agent) {
+        fprintf(stderr, "Failed to create agent\n");
+        ac_session_close(session);
         return 1;
     }
 
-    printf("\n=== Kimi K2.5 Streaming Chat Demo ===\n");
+    printf("\n=== Kimi K2.5 Streaming Chat Demo (Agent API) ===\n");
     printf("Model: %s\n", model);
     printf("API Base: %s\n", base_url);
     printf("Thinking display: %s\n", g_show_thinking ? "ON" : "OFF");
@@ -217,7 +217,6 @@ int main(int argc, char *argv[]) {
     printf("Type /help for commands, /quit to exit\n\n");
 
     char input[MAX_INPUT_LEN];
-    ac_message_t *messages = NULL;
 
     while (g_running) {
         printf("%sYou: %s", COLOR_PROMPT, COLOR_RESET);
@@ -249,57 +248,27 @@ int main(int argc, char *argv[]) {
                 g_show_thinking = !g_show_thinking;
                 printf("[Thinking display: %s]\n", g_show_thinking ? "ON" : "OFF");
                 continue;
-            } else if (strcmp(input, "/clear") == 0) {
-                /* Reset arena to clear message history */
-                arena_reset(arena);
-                llm = ac_llm_create(arena, &llm_params);
-                messages = NULL;
-                printf("[Conversation cleared]\n");
-                continue;
             } else {
                 printf("[Unknown command: %s]\n", input);
                 continue;
             }
         }
 
-        /* Add user message */
-        ac_message_t *user_msg = ac_message_create(arena, AC_ROLE_USER, input);
-        ac_message_append(&messages, user_msg);
-
         printf("%sKimi: %s", COLOR_PROMPT, COLOR_RESET);
         fflush(stdout);
 
-        /* Call LLM with streaming */
-        ac_chat_response_t response = {0};
-        arc_err_t err = ac_llm_chat_stream(llm, messages, NULL, stream_callback, NULL, &response);
+        /* Run agent - streaming happens via callback */
+        ac_agent_result_t *result = ac_agent_run(agent, input);
 
-        if (err != ARC_OK) {
-            printf("%s[Error: %s]%s\n", COLOR_ERROR, ac_strerror(err), COLOR_RESET);
-        } else {
-            /* Add assistant response to history */
-            ac_message_t *assistant_msg = ac_message_from_response(arena, &response);
-            if (assistant_msg) {
-                ac_message_append(&messages, assistant_msg);
-            }
-            
-            /* Show usage if available */
-            if (response.output_tokens > 0) {
-                printf("%s[tokens: in=%d, out=%d", COLOR_INFO, 
-                       response.input_tokens, response.output_tokens);
-                if (response.reasoning_tokens > 0) {
-                    printf(", reasoning=%d", response.reasoning_tokens);
-                }
-                printf("]%s\n", COLOR_RESET);
-            }
+        if (!result) {
+            printf("%s[Error: Agent run failed]%s\n", COLOR_ERROR, COLOR_RESET);
         }
 
-        ac_chat_response_free(&response);
         printf("\n");
     }
 
-    /* Cleanup */
-    ac_llm_cleanup(llm);
-    arena_destroy(arena);
+    /* Cleanup - session handles everything */
+    ac_session_close(session);
 
     printf("Goodbye!\n");
     return 0;

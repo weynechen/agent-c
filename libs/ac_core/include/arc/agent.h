@@ -72,18 +72,63 @@ typedef struct {
 } ac_agent_result_t;
 
 /*============================================================================
+ * Agent Callbacks (for streaming)
+ *============================================================================*/
+
+/**
+ * @brief Agent streaming callbacks
+ *
+ * When on_stream is set, the agent will use streaming mode and invoke
+ * the callback for each streaming event (thinking, text, tool calls, etc.)
+ */
+typedef struct {
+    ac_stream_callback_t on_stream;  /**< Stream callback (NULL = sync mode) */
+    void *user_data;                 /**< User context passed to callbacks */
+} ac_agent_callbacks_t;
+
+/*============================================================================
  * Agent Configuration
  *============================================================================*/
 
 /**
  * @brief Agent configuration parameters
+ *
+ * Example (sync mode - default):
+ * @code
+ * ac_agent_t *agent = ac_agent_create(session, &(ac_agent_params_t){
+ *     .name = "MyAgent",
+ *     .instructions = "You are helpful.",
+ *     .llm = { .provider = "openai", .model = "gpt-4o", .api_key = key }
+ * });
+ * ac_agent_result_t *result = ac_agent_run(agent, "Hello");
+ * @endcode
+ *
+ * Example (streaming mode):
+ * @code
+ * ac_agent_t *agent = ac_agent_create(session, &(ac_agent_params_t){
+ *     .name = "StreamBot",
+ *     .instructions = "You are helpful.",
+ *     .llm = {
+ *         .provider = "anthropic",
+ *         .model = "claude-sonnet-4-5-20250514",
+ *         .api_key = key,
+ *         .thinking = { .enabled = 1, .budget_tokens = 10000 }
+ *     },
+ *     .callbacks = {
+ *         .on_stream = my_stream_callback,
+ *         .user_data = NULL
+ *     }
+ * });
+ * ac_agent_result_t *result = ac_agent_run(agent, "Explain quantum computing");
+ * @endcode
  */
 typedef struct {
-    const char *name;                /* Agent name (optional) */
-    const char *instructions;        /* System instructions (optional) */
-    ac_llm_params_t llm;             /* LLM configuration */
-    ac_tool_registry_t *tools;       /* Tool registry (optional) */
-    int max_iterations;              /* Max ReACT loops (default: 10) */
+    const char *name;                /**< Agent name (optional) */
+    const char *instructions;        /**< System instructions (optional) */
+    ac_llm_params_t llm;             /**< LLM configuration */
+    ac_tool_registry_t *tools;       /**< Tool registry (optional) */
+    int max_iterations;              /**< Max ReACT loops (default: 10) */
+    ac_agent_callbacks_t callbacks;  /**< Streaming callbacks (optional) */
 } ac_agent_params_t;
 
 /*============================================================================
