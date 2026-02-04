@@ -231,6 +231,31 @@ if(ARC_USE_CURL)
   target_link_libraries(chat_stream PRIVATE CURL::libcurl)
 endif()
 
+# Example 10: Streaming chat with tool calling
+add_executable(chat_stream_tools
+    hosted/chat_stream_tools.c
+    hosted/demo_tools.c
+    ${DEMO_TOOLS_GEN_C}
+)
+add_dependencies(chat_stream_tools chat_tools_gen)
+
+target_link_libraries(chat_stream_tools PRIVATE
+    ac_core::ac_core
+    ac_hosted::ac_hosted
+)
+target_include_directories(chat_stream_tools PRIVATE
+    ${CJSON_INCLUDE}
+    ${CMAKE_SOURCE_DIR}/libs/ac_hosted/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/hosted
+    ${CMAKE_CURRENT_BINARY_DIR}
+)
+if(NOT WIN32)
+  target_link_libraries(chat_stream_tools PRIVATE m)
+endif()
+if(ARC_USE_CURL)
+  target_link_libraries(chat_stream_tools PRIVATE CURL::libcurl)
+endif()
+
 # Example 10: TUI chat demo with Notcurses (WeChat-style interface)
 # NOTE: chat_tui needs to be rewritten to use the new Session/Agent API
 # Temporarily disabled until rewrite is complete
@@ -245,4 +270,4 @@ endif()
 # endif()
 message(STATUS "chat_tui: Temporarily disabled (needs API rewrite)")
 
-message(STATUS "ArC Examples: hello, chat_demo, chat_tools, chat_mcp, chat_markdown, chat_trace, chat_multi_agent, chat_skills, chat_git_commit, chat_stream")
+message(STATUS "ArC Examples: hello, chat_demo, chat_tools, chat_mcp, chat_markdown, chat_trace, chat_multi_agent, chat_skills, chat_git_commit, chat_stream, chat_stream_tools")

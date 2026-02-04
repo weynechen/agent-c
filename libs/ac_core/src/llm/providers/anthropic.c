@@ -55,6 +55,78 @@ typedef struct {
  * Provider Implementation
  *============================================================================*/
 
+/**
+ * @brief Convert OpenAI tool format to Anthropic format
+ *
+ * OpenAI: [{"type": "function", "function": {"name": ..., "parameters": ...}}]
+ * Anthropic: [{"name": ..., "description": ..., "input_schema": ...}]
+ */
+static cJSON* convert_tools_to_anthropic(const char* tools_json) {
+    if (!tools_json || strlen(tools_json) == 0) {
+        return NULL;
+    }
+
+    cJSON* input = cJSON_Parse(tools_json);
+    if (!input || !cJSON_IsArray(input)) {
+        if (input) cJSON_Delete(input);
+        return NULL;
+    }
+
+    cJSON* output = cJSON_CreateArray();
+    if (!output) {
+        cJSON_Delete(input);
+        return NULL;
+    }
+
+    cJSON* tool = NULL;
+    cJSON_ArrayForEach(tool, input) {
+        cJSON* anthropic_tool = cJSON_CreateObject();
+        if (!anthropic_tool) continue;
+
+        /* Check if it's OpenAI format (has "function" wrapper) */
+        cJSON* func = cJSON_GetObjectItem(tool, "function");
+        if (func) {
+            /* OpenAI format - extract from function object */
+            cJSON* name = cJSON_GetObjectItem(func, "name");
+            cJSON* desc = cJSON_GetObjectItem(func, "description");
+            cJSON* params = cJSON_GetObjectItem(func, "parameters");
+
+            if (name && cJSON_IsString(name)) {
+                cJSON_AddStringToObject(anthropic_tool, "name", cJSON_GetStringValue(name));
+            }
+            if (desc && cJSON_IsString(desc)) {
+                cJSON_AddStringToObject(anthropic_tool, "description", cJSON_GetStringValue(desc));
+            }
+            if (params) {
+                cJSON_AddItemToObject(anthropic_tool, "input_schema", cJSON_Duplicate(params, 1));
+            }
+        } else {
+            /* Already Anthropic format or simple format - just copy relevant fields */
+            cJSON* name = cJSON_GetObjectItem(tool, "name");
+            cJSON* desc = cJSON_GetObjectItem(tool, "description");
+            cJSON* input_schema = cJSON_GetObjectItem(tool, "input_schema");
+            cJSON* params = cJSON_GetObjectItem(tool, "parameters");
+
+            if (name && cJSON_IsString(name)) {
+                cJSON_AddStringToObject(anthropic_tool, "name", cJSON_GetStringValue(name));
+            }
+            if (desc && cJSON_IsString(desc)) {
+                cJSON_AddStringToObject(anthropic_tool, "description", cJSON_GetStringValue(desc));
+            }
+            if (input_schema) {
+                cJSON_AddItemToObject(anthropic_tool, "input_schema", cJSON_Duplicate(input_schema, 1));
+            } else if (params) {
+                cJSON_AddItemToObject(anthropic_tool, "input_schema", cJSON_Duplicate(params, 1));
+            }
+        }
+
+        cJSON_AddItemToArray(output, anthropic_tool);
+    }
+
+    cJSON_Delete(input);
+    return output;
+}
+
 static void* anthropic_create(const ac_llm_params_t* params) {
     if (!params) {
         return NULL;
@@ -167,9 +239,9 @@ static arc_err_t anthropic_chat(
         }
     }
 
-    /* Tools */
+    /* Tools - convert from OpenAI format to Anthropic format */
     if (tools && strlen(tools) > 0) {
-        cJSON* tools_arr = cJSON_Parse(tools);
+        cJSON* tools_arr = convert_tools_to_anthropic(tools);
         if (tools_arr) {
             cJSON_AddItemToObject(root, "tools", tools_arr);
         }
@@ -641,9 +713,9 @@ static arc_err_t anthropic_chat_stream(
         }
     }
 
-    /* Tools */
+    /* Tools - convert from OpenAI format to Anthropic format */
     if (tools && strlen(tools) > 0) {
-        cJSON* tools_arr = cJSON_Parse(tools);
+        cJSON* tools_arr = convert_tools_to_anthropic(tools);
         if (tools_arr) {
             cJSON_AddItemToObject(root, "tools", tools_arr);
         }
@@ -658,6 +730,7 @@ static arc_err_t anthropic_chat_stream(
     }
 
     AC_LOG_DEBUG("Anthropic stream request to %s", url);
+    AC_LOG_DEBUG("Anthropic stream body: %s", body);
 
     /* Build headers */
     arc_http_header_t* headers = NULL;

@@ -532,10 +532,13 @@ cJSON* ac_content_block_to_json(const ac_content_block_t* block) {
 
     switch (block->type) {
         case AC_BLOCK_TEXT:
-            cJSON_AddStringToObject(obj, "type", "text");
-            if (block->text) {
-                cJSON_AddStringToObject(obj, "text", block->text);
+            /* Skip empty text blocks */
+            if (!block->text || strlen(block->text) == 0) {
+                cJSON_Delete(obj);
+                return NULL;
             }
+            cJSON_AddStringToObject(obj, "type", "text");
+            cJSON_AddStringToObject(obj, "text", block->text);
             break;
 
         case AC_BLOCK_THINKING:
