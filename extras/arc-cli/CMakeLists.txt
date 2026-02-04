@@ -14,7 +14,6 @@ include_directories(
     ${ARC_ROOT}/libs/ac_hosted/include
     ${ARC_ROOT}/libs/ac_hosted/src/sandbox  # Sandbox internal headers
     ${ARC_ROOT}/external/cjson
-    ${ARC_ROOT}/external/dotenv
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_BINARY_DIR}  # For generated files (tools_gen.h)
 )
@@ -100,9 +99,6 @@ set(MINIMAL_CLI_SOURCES
     # MOC-generated wrappers
     ${MOC_OUTPUT_SOURCE}
 
-    # External dependencies
-    ${ARC_ROOT}/external/dotenv/dotenv.c
-
     # Main
     main.c
 )
@@ -121,8 +117,7 @@ add_dependencies(minimal_cli minimal_cli_moc)
 #============================================================================
 
 if(MINIMAL_CLI_STANDALONE)
-    # Standalone build: need to find/build ac_core and ac_hosted
-    # First try to find pre-built libraries
+    # Standalone build: need to find/build ac_core, ac_hosted, and arc_dotenv
     find_library(AC_CORE_LIB ac_core
         PATHS
             "${ARC_ROOT}/build/libs/ac_core"
@@ -135,14 +130,21 @@ if(MINIMAL_CLI_STANDALONE)
             "${CMAKE_CURRENT_SOURCE_DIR}/../../build/libs/ac_hosted"
         NO_DEFAULT_PATH
     )
+    find_library(ARC_DOTENV_LIB arc_dotenv
+        PATHS
+            "${ARC_ROOT}/build/libs/ac_hosted"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../../build/libs/ac_hosted"
+        NO_DEFAULT_PATH
+    )
 
-    if(AC_CORE_LIB AND AC_HOSTED_LIB)
+    if(AC_CORE_LIB AND AC_HOSTED_LIB AND ARC_DOTENV_LIB)
         message(STATUS "Found ac_core library: ${AC_CORE_LIB}")
         message(STATUS "Found ac_hosted library: ${AC_HOSTED_LIB}")
-        target_link_libraries(minimal_cli ${AC_CORE_LIB} ${AC_HOSTED_LIB})
+        message(STATUS "Found arc_dotenv library: ${ARC_DOTENV_LIB}")
+        target_link_libraries(minimal_cli ${AC_HOSTED_LIB} ${ARC_DOTENV_LIB} ${AC_CORE_LIB})
     else()
         message(FATAL_ERROR
-            "ac_core or ac_hosted library not found!\n"
+            "ac_core, ac_hosted or arc_dotenv library not found!\n"
             "Please build the main project first:\n"
             "  cd ${ARC_ROOT}\n"
             "  mkdir -p build && cd build\n"

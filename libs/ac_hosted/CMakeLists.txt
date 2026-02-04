@@ -28,6 +28,7 @@ endif()
 # Hosted sources
 # Note: mcp and tools have been moved to ac_core
 set(ARC_HOSTED_SOURCES
+    src/env/env.c
     src/rules/rules.c
     src/skills/skills.c
     src/skills/skill_parser.c
@@ -138,6 +139,7 @@ endif()
 
 target_link_libraries(ac_hosted PUBLIC
     ac_core::ac_core
+    arc_dotenv
 )
 
 # Install libraries

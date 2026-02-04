@@ -16,8 +16,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <arc.h>
+#include <arc/env.h>
 #include <arc/skills.h>
-#include "dotenv.h"
 
 #define MAX_DIFF_SIZE 65536
 #define SKILLS_DIR "skills"
@@ -171,25 +171,19 @@ int main(int argc, char *argv[]) {
         repo_path = argv[1];
     }
 
-    /* Load environment from .env file */
-    if (env_load(".", false) == 0) {
-        printf("[Loaded .env file]\n");
-    }
+    /* Load multi-level config */
+    ac_env_load_verbose("chat_git_commit");
 
     /* Get API key from environment */
-    const char *api_key = getenv("OPENAI_API_KEY");
-    if (!api_key || strlen(api_key) == 0) {
-        AC_LOG_ERROR("OPENAI_API_KEY not set");
-        AC_LOG_ERROR("Create a .env file with: OPENAI_API_KEY=sk-xxx");
+    const char *api_key = ac_env_require("OPENAI_API_KEY");
+    if (!api_key) {
+        ac_env_print_help("chat_git_commit");
         return 1;
     }
 
     /* Optional: custom base URL and model */
-    const char *base_url = getenv("OPENAI_BASE_URL");
-    const char *model = getenv("OPENAI_MODEL");
-    if (!model) {
-        model = "gpt-4o-mini";
-    }
+    const char *base_url = ac_env_get("OPENAI_BASE_URL", NULL);
+    const char *model = ac_env_get("OPENAI_MODEL", "gpt-4o-mini");
 
     printf("=== Git Commit Message Generator ===\n");
     printf("Repository: %s\n", repo_path);

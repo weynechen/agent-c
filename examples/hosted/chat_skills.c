@@ -22,8 +22,8 @@
 #include <string.h>
 #include <signal.h>
 #include <arc.h>
+#include <arc/env.h>
 #include <arc/skills.h>
-#include "dotenv.h"
 #include "platform_wrap.h"
 
 #define MAX_INPUT_LEN 4096
@@ -182,28 +182,20 @@ int main(int argc, char *argv[]) {
     /* Initialize platform-specific terminal settings */
     platform_init_terminal(NULL);
 
-    /* Load environment from .env file */
-    if (env_load(".", false) == 0) {
-        printf("[Loaded .env file]\n");
-    } else {
-        printf("[No .env file found, using environment variables]\n");
-    }
+    /* Load multi-level config */
+    ac_env_load_verbose(NULL);
 
     /* Get API key from environment */
-    const char *api_key = getenv("OPENAI_API_KEY");
-    if (!api_key || strlen(api_key) == 0) {
-        AC_LOG_ERROR("OPENAI_API_KEY not set");
-        AC_LOG_ERROR("Create a .env file with: OPENAI_API_KEY=sk-xxx");
+    const char *api_key = ac_env_require("OPENAI_API_KEY");
+    if (!api_key) {
+        ac_env_print_help("chat_skills");
         platform_cleanup_terminal();
         return 1;
     }
 
     /* Optional: custom base URL and model */
-    const char *base_url = getenv("OPENAI_BASE_URL");
-    const char *model = getenv("OPENAI_MODEL");
-    if (!model) {
-        model = "gpt-4o-mini";  /* Need a model that supports tool calling */
-    }
+    const char *base_url = ac_env_get("OPENAI_BASE_URL", NULL);
+    const char *model = ac_env_get("OPENAI_MODEL", "gpt-4o-mini");
 
     /* Setup signal handler */
     signal(SIGINT, signal_handler);

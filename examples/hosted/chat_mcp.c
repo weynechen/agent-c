@@ -35,8 +35,8 @@
 /* Platform wrapper for terminal UTF-8 support and argument encoding */
 #include "platform_wrap.h"
 
-/* dotenv for loading .env file */
-#include "dotenv.h"
+/* Environment configuration */
+#include <arc/env.h>
 
 /* MOC-generated tool definitions */
 #include "demo_tools_gen.h"
@@ -87,22 +87,20 @@ int main(int argc, char *argv[]) {
     char **utf8_argv = platform_get_argv_utf8(argc, argv);
     const char *user_prompt = utf8_argv[1];
 
-    /* Load .env file */
-    env_load(".", 0);
+    /* Load multi-level config */
+    ac_env_load_verbose(NULL);
 
     /* Get API configuration */
-    const char *api_key = getenv("OPENAI_API_KEY");
-    if (!api_key || strlen(api_key) == 0) {
-        AC_LOG_ERROR("OPENAI_API_KEY environment variable is not set");
-        AC_LOG_ERROR("Create a .env file with: OPENAI_API_KEY=your-key");
+    const char *api_key = ac_env_require("OPENAI_API_KEY");
+    if (!api_key) {
+        ac_env_print_help("chat_mcp");
         platform_free_argv_utf8(utf8_argv, argc);
         platform_cleanup_terminal();
         return 1;
     }
 
-    const char *base_url = getenv("OPENAI_BASE_URL");
-    const char *model = getenv("OPENAI_MODEL");
-    if (!model) model = "gpt-4o-mini";
+    const char *base_url = ac_env_get("OPENAI_BASE_URL", NULL);
+    const char *model = ac_env_get("OPENAI_MODEL", "gpt-4o-mini");
 
     printf("=== ArC MCP Integration Demo ===\n");
     printf("Model: %s\n", model);

@@ -17,7 +17,7 @@
 #include <string.h>
 #include <signal.h>
 #include <arc.h>
-#include "dotenv.h"
+#include <arc/env.h>
 #include "markdown/md.h"
 #include "platform_wrap.h"
 
@@ -69,27 +69,19 @@ int main(int argc, char *argv[]) {
     /* Initialize platform-specific terminal settings */
     platform_init_terminal(NULL);
 
-    /* Load environment from .env file */
-    if (env_load(".", false) == 0) {
-        printf("[Loaded .env file]\n");
-    } else {
-        printf("[No .env file found, using environment variables]\n");
-    }
+    /* Load environment from multi-level config */
+    ac_env_load_verbose(NULL);
 
     /* Get API key from environment */
-    const char *api_key = getenv("OPENAI_API_KEY");
-    if (!api_key || strlen(api_key) == 0) {
-        AC_LOG_ERROR("OPENAI_API_KEY not set");
-        AC_LOG_ERROR("Create a .env file with: OPENAI_API_KEY=sk-xxx");
+    const char *api_key = ac_env_require("OPENAI_API_KEY");
+    if (!api_key) {
+        ac_env_print_help("chat_demo");
         return 1;
     }
 
     /* Optional: custom base URL and model */
-    const char *base_url = getenv("OPENAI_BASE_URL");
-    const char *model = getenv("OPENAI_MODEL");
-    if (!model) {
-        model = "gpt-3.5-turbo";
-    }
+    const char *base_url = ac_env_get("OPENAI_BASE_URL", NULL);
+    const char *model = ac_env_get("OPENAI_MODEL", "gpt-3.5-turbo");
 
     /* Setup signal handler */
     signal(SIGINT, signal_handler);

@@ -20,7 +20,7 @@
 #include <locale.h>
 #include <notcurses/notcurses.h>
 #include "arc.h"
-#include "dotenv.h"
+#include <arc/env.h>
 
 /*============================================================================
  * Constants
@@ -871,22 +871,18 @@ int main(int argc, char *argv[]) {
     /* Set locale for UTF-8 */
     setlocale(LC_ALL, "");
 
-    /* Load environment */
-    if (env_load(".", false) == 0) {
-        AC_LOG_ERROR( "[Loaded .env file]\n");
-    }
+    /* Load multi-level config */
+    ac_env_load_verbose(NULL);
 
     /* Get API key */
-    const char *api_key = getenv("OPENAI_API_KEY");
-    if (!api_key || strlen(api_key) == 0) {
-        AC_LOG_ERROR( "Error: OPENAI_API_KEY not set\n");
-        AC_LOG_ERROR( "Create a .env file with: OPENAI_API_KEY=sk-xxx\n");
+    const char *api_key = ac_env_require("OPENAI_API_KEY");
+    if (!api_key) {
+        ac_env_print_help("chat_tui");
         return 1;
     }
 
-    const char *base_url = getenv("OPENAI_BASE_URL");
-    g_app.model_name = getenv("OPENAI_MODEL");
-    if (!g_app.model_name) g_app.model_name = "gpt-3.5-turbo";
+    const char *base_url = ac_env_get("OPENAI_BASE_URL", NULL);
+    g_app.model_name = ac_env_get("OPENAI_MODEL", "gpt-3.5-turbo");
 
     /* Setup signal handler */
     signal(SIGINT, signal_handler);

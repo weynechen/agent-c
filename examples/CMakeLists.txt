@@ -9,10 +9,11 @@ set(CJSON_INCLUDE ${CMAKE_SOURCE_DIR}/external/cjson)
 add_executable(hello hosted/hello.c)
 target_link_libraries(hello PRIVATE
     ac_core::ac_core
-    arc_dotenv
+    ac_hosted::ac_hosted
 )
 target_include_directories(hello PRIVATE
     ${CJSON_INCLUDE}
+    ${CMAKE_SOURCE_DIR}/libs/ac_hosted/include
 )
 if(ARC_USE_CURL)
   target_link_libraries(hello PRIVATE CURL::libcurl)
@@ -22,12 +23,13 @@ endif()
 add_executable(chat_demo hosted/chat_demo.c)
 target_link_libraries(chat_demo PRIVATE
     ac_core::ac_core
+    ac_hosted::ac_hosted
     arc_markdown
-    arc_dotenv
     arc_platform_wrap
 )
 target_include_directories(chat_demo PRIVATE
     ${CJSON_INCLUDE}
+    ${CMAKE_SOURCE_DIR}/libs/ac_hosted/include
     ${CMAKE_SOURCE_DIR}/libs/ac_hosted/src
     ${CMAKE_SOURCE_DIR}/external/args/include
 )
@@ -60,11 +62,12 @@ add_dependencies(chat_tools chat_tools_gen)
 
 target_link_libraries(chat_tools PRIVATE
     ac_core::ac_core
-    arc_dotenv
+    ac_hosted::ac_hosted
     arc_platform_wrap
 )
 target_include_directories(chat_tools PRIVATE
     ${CJSON_INCLUDE}
+    ${CMAKE_SOURCE_DIR}/libs/ac_hosted/include
     ${CMAKE_SOURCE_DIR}/external/args/include
     ${CMAKE_CURRENT_SOURCE_DIR}/hosted
     ${CMAKE_CURRENT_BINARY_DIR}
@@ -86,11 +89,12 @@ add_dependencies(chat_mcp chat_tools_gen)
 
 target_link_libraries(chat_mcp PRIVATE
     ac_core::ac_core
-    arc_dotenv
+    ac_hosted::ac_hosted
     arc_platform_wrap
 )
 target_include_directories(chat_mcp PRIVATE
     ${CJSON_INCLUDE}
+    ${CMAKE_SOURCE_DIR}/libs/ac_hosted/include
     ${CMAKE_SOURCE_DIR}/external/args/include
     ${CMAKE_CURRENT_SOURCE_DIR}/hosted
     ${CMAKE_CURRENT_BINARY_DIR}
@@ -123,7 +127,6 @@ add_dependencies(chat_trace chat_tools_gen)
 target_link_libraries(chat_trace PRIVATE
     ac_core::ac_core
     ac_hosted::ac_hosted
-    arc_dotenv
     arc_platform_wrap
 )
 target_include_directories(chat_trace PRIVATE
@@ -146,7 +149,6 @@ add_executable(chat_multi_agent hosted/chat_multi_agent.c)
 target_link_libraries(chat_multi_agent PRIVATE
     ac_core::ac_core
     ac_hosted::ac_hosted
-    arc_dotenv
 )
 target_include_directories(chat_multi_agent PRIVATE
     ${CJSON_INCLUDE}
@@ -164,7 +166,6 @@ add_executable(chat_skills hosted/chat_skills.c)
 target_link_libraries(chat_skills PRIVATE
     ac_core::ac_core
     ac_hosted::ac_hosted
-    arc_dotenv
     arc_platform_wrap
 )
 target_include_directories(chat_skills PRIVATE
@@ -181,7 +182,6 @@ add_executable(chat_git_commit hosted/chat_git_commit.c)
 target_link_libraries(chat_git_commit PRIVATE
     ac_core::ac_core
     ac_hosted::ac_hosted
-    arc_dotenv
 )
 target_include_directories(chat_git_commit PRIVATE
     ${CJSON_INCLUDE}

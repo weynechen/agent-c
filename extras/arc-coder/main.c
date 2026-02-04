@@ -14,8 +14,8 @@
 #include <string.h>
 #include <unistd.h>
 
-/* dotenv for loading .env file */
-#include "dotenv.h"
+/* Environment configuration */
+#include <arc/env.h>
 
 /*============================================================================
  * Sandbox Confirmation Callback
@@ -172,16 +172,16 @@ static int parse_args(int argc, char **argv,
     /* Start with defaults */
     *config = code_agent_default_config();
 
-    /* Load .env file */
-    env_load(".", 0);
+    /* Load multi-level config */
+    ac_env_load_verbose("arc-coder");
 
-    const char *api_key = getenv("OPENAI_API_KEY");
-    const char *model = getenv_default("OPENAI_MODEL", "gpt-3.5-turbo");
-    const char *base_url = getenv_default("OPENAI_BASE_URL", NULL);
-    const char *env_provider = getenv_default("PROVIDER", "openai");
+    const char *api_key = ac_env_require("OPENAI_API_KEY");
+    const char *model = ac_env_get("OPENAI_MODEL", "gpt-3.5-turbo");
+    const char *base_url = ac_env_get("OPENAI_BASE_URL", NULL);
+    const char *env_provider = ac_env_get("PROVIDER", "openai");
 
     if (!api_key) {
-        AC_LOG_ERROR("Error: OPENAI_API_KEY not set\n");
+        ac_env_print_help("arc-coder");
         return 1;
     }
 
@@ -212,20 +212,20 @@ static int parse_args(int argc, char **argv,
     config->enable_tools = 1;
 
     /* Parse safe mode from env */
-    const char *safe_mode_str = getenv_default("SAFE_MODE", "true");
+    const char *safe_mode_str = ac_env_get("SAFE_MODE", "true");
     if (safe_mode_str && (strcmp(safe_mode_str, "true") == 0 || strcmp(safe_mode_str, "1") == 0)) {
         config->safe_mode = 1;
     }
 
     /* Parse sandbox settings from env (sandbox enabled by default) */
     config->enable_sandbox = 1;  /* Default: enabled */
-    const char *sandbox_str = getenv_default("SANDBOX_ENABLED", "true");
+    const char *sandbox_str = ac_env_get("SANDBOX_ENABLED", "true");
     if (sandbox_str && (strcmp(sandbox_str, "false") == 0 || strcmp(sandbox_str, "0") == 0)) {
         config->enable_sandbox = 0;
     }
-    config->workspace = getenv("SANDBOX_WORKSPACE");
+    config->workspace = ac_env_get("SANDBOX_WORKSPACE", NULL);
 
-    const char *sandbox_net_str = getenv_default("SANDBOX_ALLOW_NETWORK", "true");
+    const char *sandbox_net_str = ac_env_get("SANDBOX_ALLOW_NETWORK", "true");
     if (sandbox_net_str && (strcmp(sandbox_net_str, "true") == 0 || strcmp(sandbox_net_str, "1") == 0)) {
         config->sandbox_allow_network = 1;
     }

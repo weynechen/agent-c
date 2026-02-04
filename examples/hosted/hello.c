@@ -10,17 +10,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <arc.h>
-#include "dotenv.h"
+#include <arc/env.h>
 
 int main(void) {
-    env_load(".", false);
+    ac_env_load_verbose(NULL);
 
-    const char *api_key = getenv("OPENAI_API_KEY");
-    const char *model = getenv_default("OPENAI_MODEL", "gpt-3.5-turbo");
-    const char *base_url = getenv_default("OPENAI_BASE_URL", NULL);
+    const char *api_key = ac_env_require("OPENAI_API_KEY");
+    const char *model = ac_env_get("OPENAI_MODEL", "gpt-3.5-turbo");
+    const char *base_url = ac_env_get("OPENAI_BASE_URL", NULL);
 
     if (!api_key) {
-        AC_LOG_ERROR("OPENAI_API_KEY not set");
+        ac_env_print_help("hello");
         return 1;
     }
 

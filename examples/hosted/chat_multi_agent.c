@@ -24,8 +24,8 @@
 #include <string.h>
 #include <pthread.h>
 #include <arc.h>
+#include <arc/env.h>
 #include <arc/http_pool.h>
-#include "dotenv.h"
 
 /*===========================================================================
  * Configuration
@@ -259,23 +259,17 @@ int main(int argc, char *argv[]) {
     printf("║        ArC Multi-Agent Parallel Execution Demo            ║\n");
     printf("╚══════════════════════════════════════════════════════════════╝\n\n");
 
-    /* Load environment */
-    if (env_load(".", false) == 0) {
-        printf("[+] Loaded .env file\n");
-    }
+    /* Load multi-level config */
+    ac_env_load_verbose(NULL);
 
-    const char *api_key = getenv("OPENAI_API_KEY");
-    if (!api_key || strlen(api_key) == 0) {
-        fprintf(stderr, "[!] Error: OPENAI_API_KEY not set\n");
-        fprintf(stderr, "    Create a .env file with: OPENAI_API_KEY=sk-xxx\n");
+    const char *api_key = ac_env_require("OPENAI_API_KEY");
+    if (!api_key) {
+        ac_env_print_help("chat_multi_agent");
         return 1;
     }
 
-    const char *base_url = getenv("OPENAI_BASE_URL");
-    const char *model = getenv("OPENAI_MODEL");
-    if (!model) {
-        model = "gpt-4o-mini";  /* Use a fast model for parallel calls */
-    }
+    const char *base_url = ac_env_get("OPENAI_BASE_URL", NULL);
+    const char *model = ac_env_get("OPENAI_MODEL", "gpt-4o-mini");
 
     printf("[+] Model: %s\n", model);
     printf("[+] Endpoint: %s\n", base_url ? base_url : "https://api.openai.com/v1");

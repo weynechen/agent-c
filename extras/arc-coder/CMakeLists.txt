@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(code_arc VERSION 0.1.0 LANGUAGES C)
+project(arc_coder VERSION 0.1.0 LANGUAGES C)
 
 # C standard
 set(CMAKE_C_STANDARD 99)
@@ -14,7 +14,6 @@ include_directories(
     ${ARC_ROOT}/libs/ac_hosted/include
     ${ARC_ROOT}/libs/ac_hosted/src/sandbox
     ${ARC_ROOT}/external/cjson
-    ${ARC_ROOT}/external/dotenv
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_BINARY_DIR}  # For generated files
 )
@@ -55,7 +54,7 @@ add_custom_command(
 )
 
 # Custom target for prompt generation
-add_custom_target(code_arc_prompts DEPENDS ${PROMPT_OUTPUT} ${PROMPT_HEADER})
+add_custom_target(arc_coder_prompts DEPENDS ${PROMPT_OUTPUT} ${PROMPT_HEADER})
 
 #============================================================================
 # Determine Build Mode (Standalone vs Parent Project)
@@ -105,7 +104,7 @@ if(CODE_ARC_STANDALONE)
         COMMENT "Running MOC on code_tools.h"
         VERBATIM
     )
-    add_custom_target(code_arc_moc DEPENDS ${MOC_OUTPUT_HEADER} ${MOC_OUTPUT_SOURCE})
+    add_custom_target(arc_coder_moc DEPENDS ${MOC_OUTPUT_HEADER} ${MOC_OUTPUT_SOURCE})
 else()
     # Building with parent project - moc is a target
     add_custom_command(
@@ -115,8 +114,8 @@ else()
         COMMENT "Running MOC on code_tools.h"
         VERBATIM
     )
-    add_custom_target(code_arc_moc DEPENDS ${MOC_OUTPUT_HEADER} ${MOC_OUTPUT_SOURCE})
-    add_dependencies(code_arc_moc moc)
+    add_custom_target(arc_coder_moc DEPENDS ${MOC_OUTPUT_HEADER} ${MOC_OUTPUT_SOURCE})
+    add_dependencies(arc_coder_moc moc)
 endif()
 
 #============================================================================
@@ -143,9 +142,6 @@ set(CODE_ARC_SOURCES
     # Prompt-generated
     ${PROMPT_OUTPUT}
 
-    # External
-    ${ARC_ROOT}/external/dotenv/dotenv.c
-
     # Main
     main.c
 )
@@ -154,10 +150,10 @@ set(CODE_ARC_SOURCES
 # Executable
 #============================================================================
 
-add_executable(code_arc ${CODE_ARC_SOURCES})
+add_executable(arc_coder ${CODE_ARC_SOURCES})
 
 # Ensure dependencies run before compilation
-add_dependencies(code_arc code_arc_moc code_arc_prompts)
+add_dependencies(arc_coder arc_coder_moc arc_coder_prompts)
 
 #============================================================================
 # Link Libraries
@@ -176,25 +172,32 @@ if(CODE_ARC_STANDALONE)
             "${CMAKE_CURRENT_SOURCE_DIR}/../../build/libs/ac_hosted"
         NO_DEFAULT_PATH
     )
+    find_library(ARC_DOTENV_LIB arc_dotenv
+        PATHS
+            "${ARC_ROOT}/build/libs/ac_hosted"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../../build/libs/ac_hosted"
+        NO_DEFAULT_PATH
+    )
 
-    if(AC_CORE_LIB AND AC_HOSTED_LIB)
+    if(AC_CORE_LIB AND AC_HOSTED_LIB AND ARC_DOTENV_LIB)
         message(STATUS "Found ac_core: ${AC_CORE_LIB}")
         message(STATUS "Found ac_hosted: ${AC_HOSTED_LIB}")
-        # Order matters: ac_hosted depends on ac_core
-        target_link_libraries(code_arc ${AC_HOSTED_LIB} ${AC_CORE_LIB})
+        message(STATUS "Found arc_dotenv: ${ARC_DOTENV_LIB}")
+        # Order matters: ac_hosted depends on ac_core and arc_dotenv
+        target_link_libraries(arc_coder ${AC_HOSTED_LIB} ${ARC_DOTENV_LIB} ${AC_CORE_LIB})
     else()
         message(FATAL_ERROR
-            "ac_core or ac_hosted not found!\n"
+            "ac_core, ac_hosted or arc_dotenv not found!\n"
             "Build the main project first."
         )
     endif()
 else()
     # Order matters: ac_hosted depends on ac_core
-    target_link_libraries(code_arc ac_hosted ac_core)
+    target_link_libraries(arc_coder ac_hosted ac_core)
 endif()
 
 # Common libraries
-target_link_libraries(code_arc
+target_link_libraries(arc_coder
     curl
     pthread
     m
@@ -205,7 +208,7 @@ target_link_libraries(code_arc
 #============================================================================
 
 if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_C_COMPILER_ID MATCHES "Clang")
-    target_compile_options(code_arc PRIVATE
+    target_compile_options(arc_coder PRIVATE
         -Wall
         -Wextra
         -Wno-unused-parameter
@@ -216,7 +219,7 @@ endif()
 # Install
 #============================================================================
 
-install(TARGETS code_arc DESTINATION bin)
+install(TARGETS arc_coder DESTINATION bin)
 
 #============================================================================
 # Summary
