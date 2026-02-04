@@ -12,123 +12,12 @@
  */
 
 #include "mcp_internal.h"
+#include "arc/sse_parser.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <time.h>
-
-/*============================================================================
- * SSE Parser
- *============================================================================*/
-
-typedef struct {
-    char *event_type;
-    char *data;
-    char *id;
-} sse_event_t;
-
-typedef struct {
-    char *buffer;
-    size_t buffer_size;
-    size_t buffer_len;
-    sse_event_t current;
-
-    void (*on_event)(const sse_event_t *event, void *ctx);
-    void *ctx;
-} sse_parser_t;
-
-static void sse_parser_init(sse_parser_t *p, void (*on_event)(const sse_event_t*, void*), void *ctx) {
-    memset(p, 0, sizeof(*p));
-    p->buffer_size = 4096;
-    p->buffer = (char *)malloc(p->buffer_size);
-    p->on_event = on_event;
-    p->ctx = ctx;
-}
-
-static void sse_parser_free(sse_parser_t *p) {
-    if (p->buffer) free(p->buffer);
-    if (p->current.event_type) free(p->current.event_type);
-    if (p->current.data) free(p->current.data);
-    if (p->current.id) free(p->current.id);
-    memset(p, 0, sizeof(*p));
-}
-
-static void sse_emit_event(sse_parser_t *p) {
-    if (p->current.data && p->on_event) {
-        p->on_event(&p->current, p->ctx);
-    }
-    if (p->current.event_type) { free(p->current.event_type); p->current.event_type = NULL; }
-    if (p->current.data) { free(p->current.data); p->current.data = NULL; }
-    if (p->current.id) { free(p->current.id); p->current.id = NULL; }
-}
-
-static void sse_process_line(sse_parser_t *p, const char *line, size_t len) {
-    if (len == 0) {
-        sse_emit_event(p);
-        return;
-    }
-    if (line[0] == ':') return;
-
-    const char *colon = memchr(line, ':', len);
-    size_t field_len;
-    const char *value;
-    size_t value_len;
-
-    if (colon) {
-        field_len = colon - line;
-        value = colon + 1;
-        value_len = len - field_len - 1;
-        if (value_len > 0 && *value == ' ') { value++; value_len--; }
-    } else {
-        field_len = len;
-        value = "";
-        value_len = 0;
-    }
-
-    if (field_len == 5 && strncmp(line, "event", 5) == 0) {
-        if (p->current.event_type) free(p->current.event_type);
-        p->current.event_type = strndup(value, value_len);
-    } else if (field_len == 4 && strncmp(line, "data", 4) == 0) {
-        if (p->current.data) {
-            size_t old_len = strlen(p->current.data);
-            char *new_data = (char *)realloc(p->current.data, old_len + 1 + value_len + 1);
-            if (new_data) {
-                new_data[old_len] = '\n';
-                memcpy(new_data + old_len + 1, value, value_len);
-                new_data[old_len + 1 + value_len] = '\0';
-                p->current.data = new_data;
-            }
-        } else {
-            p->current.data = strndup(value, value_len);
-        }
-    } else if (field_len == 2 && strncmp(line, "id", 2) == 0) {
-        if (p->current.id) free(p->current.id);
-        p->current.id = strndup(value, value_len);
-    }
-}
-
-static void sse_parser_feed(sse_parser_t *p, const char *data, size_t len) {
-    for (size_t i = 0; i < len; i++) {
-        char c = data[i];
-        if (c == '\n') {
-            size_t line_len = p->buffer_len;
-            if (line_len > 0 && p->buffer[line_len - 1] == '\r') line_len--;
-            p->buffer[line_len] = '\0';
-            sse_process_line(p, p->buffer, line_len);
-            p->buffer_len = 0;
-        } else {
-            if (p->buffer_len >= p->buffer_size - 1) {
-                size_t new_size = p->buffer_size * 2;
-                char *new_buf = (char *)realloc(p->buffer, new_size);
-                if (new_buf) { p->buffer = new_buf; p->buffer_size = new_size; }
-            }
-            if (p->buffer_len < p->buffer_size - 1) {
-                p->buffer[p->buffer_len++] = c;
-            }
-        }
-    }
-}
 
 /*============================================================================
  * SSE Transport Structure
@@ -168,23 +57,23 @@ typedef struct {
  * SSE Event Handler (called from background thread)
  *============================================================================*/
 
-static void sse_on_event(const sse_event_t *event, void *user_data) {
+static int sse_on_event(const sse_event_t *event, void *user_data) {
     mcp_sse_transport_t *sse = (mcp_sse_transport_t *)user_data;
 
     AC_LOG_DEBUG("SSE event: type=%s, data=%.60s%s",
-                 event->event_type ? event->event_type : "(none)",
+                 event->event ? event->event : "(none)",
                  event->data ? event->data : "(none)",
                  (event->data && strlen(event->data) > 60) ? "..." : "");
 
     /* endpoint event */
-    if (event->event_type && strcmp(event->event_type, "endpoint") == 0 && event->data) {
+    if (event->event && strcmp(event->event, "endpoint") == 0 && event->data) {
         pthread_mutex_lock(&sse->mutex);
         if (sse->endpoint) free(sse->endpoint);
         sse->endpoint = strdup(event->data);
         sse->sse_connected = 1;
         pthread_mutex_unlock(&sse->mutex);
         AC_LOG_INFO("SSE: endpoint = %s", sse->endpoint);
-        return;
+        return 0;
     }
 
     /* message event - JSON-RPC response */
@@ -208,6 +97,8 @@ static void sse_on_event(const sse_event_t *event, void *user_data) {
             cJSON_Delete(json);
         }
     }
+
+    return 0;  /* Continue receiving events */
 }
 
 /*============================================================================

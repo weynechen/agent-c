@@ -14,7 +14,7 @@ set(ARC_CORE_SOURCES
     src/llm/llm.c
     src/llm/provider.c
     src/llm/message/message_json.c
-    src/llm/sse_parser.c
+    src/sse_parser.c
     src/tools/tool.c
     src/tools/tool_mcp.c
     src/mcp/mcp.c

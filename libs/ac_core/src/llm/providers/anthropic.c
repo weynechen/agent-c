@@ -14,7 +14,7 @@
 
 #include "../llm_provider.h"
 #include "../message/message_json.h"
-#include "../sse_parser.h"
+#include "arc/sse_parser.h"
 #include "arc/message.h"
 #include "arc/platform.h"
 #include "arc/log.h"

@@ -3,7 +3,7 @@
  * @brief SSE (Server-Sent Events) Parser implementation
  */
 
-#include "sse_parser.h"
+#include "arc/sse_parser.h"
 #include "arc/platform.h"
 #include <string.h>
 #include <stdlib.h>
@@ -19,13 +19,13 @@ static void emit_event(sse_parser_t *p) {
             .data = p->data,
             .id = p->id
         };
-        
+
         int ret = p->callback(&event, p->ctx);
         if (ret != 0) {
             p->aborted = 1;
         }
     }
-    
+
     /* Reset current event */
     if (p->event_type) { ARC_FREE(p->event_type); p->event_type = NULL; }
     if (p->data) { ARC_FREE(p->data); p->data = NULL; }
@@ -38,18 +38,18 @@ static void process_line(sse_parser_t *p, const char *line, size_t len) {
         emit_event(p);
         return;
     }
-    
+
     /* Comment line */
     if (line[0] == ':') {
         return;
     }
-    
+
     /* Find colon separator */
     const char *colon = memchr(line, ':', len);
     size_t field_len;
     const char *value;
     size_t value_len;
-    
+
     if (colon) {
         field_len = colon - line;
         value = colon + 1;
@@ -64,7 +64,7 @@ static void process_line(sse_parser_t *p, const char *line, size_t len) {
         value = "";
         value_len = 0;
     }
-    
+
     /* Process field */
     if (field_len == 5 && strncmp(line, "event", 5) == 0) {
         if (p->event_type) ARC_FREE(p->event_type);
@@ -114,17 +114,17 @@ int sse_parser_feed(sse_parser_t *p, const char *data, size_t len) {
     if (!p || !data || p->aborted) {
         return -1;
     }
-    
+
     for (size_t i = 0; i < len; i++) {
         char c = data[i];
-        
+
         if (c == '\n' || c == '\r') {
             /* End of line - process it */
             if (p->buffer_len > 0 || c == '\n') {
                 p->buffer[p->buffer_len] = '\0';
                 process_line(p, p->buffer, p->buffer_len);
                 p->buffer_len = 0;
-                
+
                 if (p->aborted) {
                     return -1;
                 }
@@ -147,6 +147,6 @@ int sse_parser_feed(sse_parser_t *p, const char *data, size_t len) {
             p->buffer[p->buffer_len++] = c;
         }
     }
-    
+
     return 0;
 }

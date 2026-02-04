@@ -1,8 +1,9 @@
 /**
  * @file sse_parser.h
- * @brief SSE (Server-Sent Events) Parser for LLM streaming
+ * @brief SSE (Server-Sent Events) Parser
  *
  * Parses SSE events from streaming HTTP responses.
+ * Used by both LLM streaming and MCP SSE transport.
  */
 
 #ifndef ARC_SSE_PARSER_H
@@ -19,9 +20,9 @@ extern "C" {
  *============================================================================*/
 
 typedef struct {
-    char *event;     /**< Event type (e.g., "message_start") */
-    char *data;      /**< Event data (JSON string) */
-    char *id;        /**< Event ID (optional) */
+    const char *event;  /**< Event type (e.g., "message", "endpoint") */
+    const char *data;   /**< Event data (JSON string) */
+    const char *id;     /**< Event ID (optional) */
 } sse_event_t;
 
 /*============================================================================
@@ -44,11 +45,11 @@ typedef struct {
     char *buffer;           /**< Line buffer */
     size_t buffer_size;     /**< Buffer capacity */
     size_t buffer_len;      /**< Current buffer length */
-    
+
     char *event_type;       /**< Current event type */
     char *data;             /**< Current data (accumulated) */
     char *id;               /**< Current ID */
-    
+
     sse_event_callback_t callback;
     void *ctx;
     int aborted;
@@ -60,11 +61,17 @@ typedef struct {
 
 /**
  * @brief Initialize SSE parser
+ *
+ * @param p         Parser to initialize
+ * @param callback  Callback for received events
+ * @param ctx       User context passed to callback
  */
 void sse_parser_init(sse_parser_t *p, sse_event_callback_t callback, void *ctx);
 
 /**
  * @brief Free SSE parser resources
+ *
+ * @param p  Parser to free
  */
 void sse_parser_free(sse_parser_t *p);
 
