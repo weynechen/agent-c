@@ -212,7 +212,7 @@ static arc_err_t mcp_rpc_call(
         &response_json
     );
 
-    free(request_json);
+    ARC_FREE(request_json);
 
     if (err != ARC_OK) {
         AC_LOG_ERROR("MCP: Transport error: %s", client->transport->error_msg);
@@ -229,7 +229,7 @@ static arc_err_t mcp_rpc_call(
 
     /* Parse response */
     err = mcp_parse_response(client, response_json, result_out);
-    free(response_json);
+    ARC_FREE(response_json);
 
     return err;
 }
@@ -424,9 +424,9 @@ arc_err_t ac_mcp_connect(ac_mcp_client_t *client) {
         }
         if (response) {
             AC_LOG_DEBUG("initialized notification response: %s", response);
-            free(response);
+            ARC_FREE(response);
         }
-        free(notif_json);
+        ARC_FREE(notif_json);
     }
 
     AC_LOG_INFO("MCP connected: server=%s %s, protocol=%s",
@@ -529,7 +529,7 @@ arc_err_t ac_mcp_discover_tools(ac_mcp_client_t *client) {
             char *schema_str = cJSON_PrintUnformatted(input_schema);
             if (schema_str) {
                 tool->parameters = arena_strdup(client->arena, schema_str);
-                free(schema_str);
+                ARC_FREE(schema_str);
             }
         } else {
             tool->parameters = arena_strdup(client->arena, "{\"type\":\"object\",\"properties\":{}}");
@@ -568,7 +568,7 @@ arc_err_t ac_mcp_call_tool(
     *result_out = NULL;
 
     if (!ac_mcp_is_connected(client)) {
-        *result_out = strdup("{\"error\":\"MCP not connected\"}");
+        *result_out = ARC_STRDUP("{\"error\":\"MCP not connected\"}");
         return ARC_ERR_NOT_CONNECTED;
     }
 
@@ -596,14 +596,14 @@ arc_err_t ac_mcp_call_tool(
     if (err != ARC_OK) {
         char buf[256];
         snprintf(buf, sizeof(buf), "{\"error\":\"Tool call failed: %s\"}", ac_strerror(err));
-        *result_out = strdup(buf);
+        *result_out = ARC_STRDUP(buf);
         return err;
     }
 
     /* Parse content */
     cJSON *content = cJSON_GetObjectItem(result, "content");
     if (!content || !cJSON_IsArray(content)) {
-        *result_out = strdup("{\"result\":null}");
+        *result_out = ARC_STRDUP("{\"result\":null}");
         cJSON_Delete(result);
         return ARC_OK;
     }
@@ -628,7 +628,7 @@ arc_err_t ac_mcp_call_tool(
         return ARC_OK;
     }
 
-    char *text_result = (char *)malloc(total_len + 64);
+    char *text_result = (char *)ARC_MALLOC(total_len + 64);
     if (!text_result) {
         cJSON_Delete(result);
         return ARC_ERR_MEMORY;
@@ -658,7 +658,7 @@ arc_err_t ac_mcp_call_tool(
     /* Wrap in JSON */
     cJSON *json_result = cJSON_CreateObject();
     cJSON_AddStringToObject(json_result, "result", text_result);
-    free(text_result);
+    ARC_FREE(text_result);
 
     *result_out = cJSON_PrintUnformatted(json_result);
     cJSON_Delete(json_result);
@@ -765,7 +765,7 @@ ac_mcp_servers_config_t *ac_mcp_load_config(const char *path) {
         return NULL;
     }
 
-    char *content = (char *)malloc(size + 1);
+    char *content = (char *)ARC_MALLOC(size + 1);
     if (!content) {
         fclose(fp);
         return NULL;
@@ -776,7 +776,7 @@ ac_mcp_servers_config_t *ac_mcp_load_config(const char *path) {
     content[read_size] = '\0';
 
     cJSON *root = cJSON_Parse(content);
-    free(content);
+    ARC_FREE(content);
 
     if (!root) {
         AC_LOG_ERROR("Failed to parse MCP config: %s", config_path);
@@ -803,7 +803,7 @@ ac_mcp_servers_config_t *ac_mcp_load_config(const char *path) {
         array_size = MCP_MAX_SERVERS;
     }
 
-    ac_mcp_servers_config_t *config = (ac_mcp_servers_config_t *)calloc(
+    ac_mcp_servers_config_t *config = (ac_mcp_servers_config_t *)ARC_CALLOC(
         1, sizeof(ac_mcp_servers_config_t)
     );
     if (!config) {
@@ -811,9 +811,9 @@ ac_mcp_servers_config_t *ac_mcp_load_config(const char *path) {
         return NULL;
     }
 
-    config->servers = (mcp_server_entry_t *)calloc(array_size, sizeof(mcp_server_entry_t));
+    config->servers = (mcp_server_entry_t *)ARC_CALLOC(array_size, sizeof(mcp_server_entry_t));
     if (!config->servers) {
-        free(config);
+        ARC_FREE(config);
         cJSON_Delete(root);
         return NULL;
     }
@@ -831,17 +831,17 @@ ac_mcp_servers_config_t *ac_mcp_load_config(const char *path) {
 
         mcp_server_entry_t *entry = &config->servers[config->count];
 
-        entry->url = strdup(cJSON_GetStringValue(url));
+        entry->url = ARC_STRDUP(cJSON_GetStringValue(url));
         if (!entry->url) continue;
 
         cJSON *name = cJSON_GetObjectItem(server_json, "name");
         if (name && cJSON_IsString(name)) {
-            entry->name = strdup(cJSON_GetStringValue(name));
+            entry->name = ARC_STRDUP(cJSON_GetStringValue(name));
         }
 
         cJSON *api_key = cJSON_GetObjectItem(server_json, "api_key");
         if (api_key && cJSON_IsString(api_key)) {
-            entry->api_key = strdup(cJSON_GetStringValue(api_key));
+            entry->api_key = ARC_STRDUP(cJSON_GetStringValue(api_key));
         }
 
         cJSON *timeout = cJSON_GetObjectItem(server_json, "timeout_ms");
@@ -891,14 +891,14 @@ void ac_mcp_config_free(ac_mcp_servers_config_t *config) {
     if (config->servers) {
         for (size_t i = 0; i < config->count; i++) {
             mcp_server_entry_t *entry = &config->servers[i];
-            if (entry->name) free(entry->name);
-            if (entry->url) free(entry->url);
-            if (entry->api_key) free(entry->api_key);
+            if (entry->name) ARC_FREE(entry->name);
+            if (entry->url) ARC_FREE(entry->url);
+            if (entry->api_key) ARC_FREE(entry->api_key);
         }
-        free(config->servers);
+        ARC_FREE(config->servers);
     }
 
-    free(config);
+    ARC_FREE(config);
 }
 
 /* Forward declaration */

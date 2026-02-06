@@ -12,6 +12,7 @@
 #include "arc/mcp.h"
 #include "arc/arena.h"
 #include "arc/log.h"
+#include "arc/platform.h"
 #include "http_client.h"
 #include "cJSON.h"
 

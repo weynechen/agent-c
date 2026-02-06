@@ -162,7 +162,7 @@ static void on_llm_request(void *ctx, const ac_hook_llm_request_t *info) {
     emit_event(AC_TRACE_LLM_REQUEST, info->agent_name, &event);
 
     /* Cleanup */
-    if (messages_json) free(messages_json);
+    if (messages_json) ARC_FREE(messages_json);
 }
 
 static void on_llm_response(void *ctx, const ac_hook_llm_response_t *info) {
@@ -184,7 +184,7 @@ static void on_llm_response(void *ctx, const ac_hook_llm_response_t *info) {
     emit_event(AC_TRACE_LLM_RESPONSE, info->agent_name, &event);
 
     /* Cleanup */
-    if (tool_calls_json) free(tool_calls_json);
+    if (tool_calls_json) ARC_FREE(tool_calls_json);
 }
 
 static void on_tool_start(void *ctx, const ac_hook_tool_start_t *info) {

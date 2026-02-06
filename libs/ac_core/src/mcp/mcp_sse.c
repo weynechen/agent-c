@@ -68,8 +68,8 @@ static int sse_on_event(const sse_event_t *event, void *user_data) {
     /* endpoint event */
     if (event->event && strcmp(event->event, "endpoint") == 0 && event->data) {
         pthread_mutex_lock(&sse->mutex);
-        if (sse->endpoint) free(sse->endpoint);
-        sse->endpoint = strdup(event->data);
+        if (sse->endpoint) ARC_FREE(sse->endpoint);
+        sse->endpoint = ARC_STRDUP(event->data);
         sse->sse_connected = 1;
         pthread_mutex_unlock(&sse->mutex);
         AC_LOG_INFO("SSE: endpoint = %s", sse->endpoint);
@@ -88,7 +88,7 @@ static int sse_on_event(const sse_event_t *event, void *user_data) {
                 pthread_mutex_lock(&sse->mutex);
                 if (sse->response_count < SSE_MAX_PENDING_RESPONSES) {
                     sse->responses[sse->response_count].id = resp_id;
-                    sse->responses[sse->response_count].json = strdup(event->data);
+                    sse->responses[sse->response_count].json = ARC_STRDUP(event->data);
                     sse->response_count++;
                     AC_LOG_DEBUG("SSE: queued response id=%d", resp_id);
                 }
@@ -286,11 +286,11 @@ static arc_err_t sse_request(
     char *full_url;
     if (sse->endpoint[0] == '/') {
         size_t len = strlen(sse->base_url) + strlen(sse->endpoint) + 1;
-        full_url = (char *)malloc(len);
+        full_url = (char *)ARC_MALLOC(len);
         if (!full_url) return ARC_ERR_MEMORY;
         snprintf(full_url, len, "%s%s", sse->base_url, sse->endpoint);
     } else {
-        full_url = strdup(sse->endpoint);
+        full_url = ARC_STRDUP(sse->endpoint);
         if (!full_url) return ARC_ERR_MEMORY;
     }
 
@@ -314,7 +314,7 @@ static arc_err_t sse_request(
     arc_err_t err = arc_http_request(sse->post_http, &req, &resp);
 
     arc_http_header_free(headers);
-    free(full_url);
+    ARC_FREE(full_url);
 
     if (err != ARC_OK) {
         mcp_transport_set_error(t, "POST failed: %s",
@@ -332,7 +332,7 @@ static arc_err_t sse_request(
             cJSON *jsonrpc = cJSON_GetObjectItem(json, "jsonrpc");
             if (jsonrpc) {
                 AC_LOG_DEBUG("SSE: Got direct JSON response in POST body");
-                *response_json = strdup(resp.body);
+                *response_json = ARC_STRDUP(resp.body);
                 cJSON_Delete(json);
                 arc_http_response_free(&resp);
                 return *response_json ? ARC_OK : ARC_ERR_MEMORY;
@@ -403,7 +403,7 @@ static void sse_disconnect(mcp_transport_t *t) {
     pthread_mutex_lock(&sse->mutex);
     for (int i = 0; i < sse->response_count; i++) {
         if (sse->responses[i].json) {
-            free(sse->responses[i].json);
+            ARC_FREE(sse->responses[i].json);
         }
     }
     sse->response_count = 0;
@@ -424,7 +424,7 @@ static void sse_destroy(mcp_transport_t *t) {
     }
 
     if (sse->endpoint) {
-        free(sse->endpoint);
+        ARC_FREE(sse->endpoint);
         sse->endpoint = NULL;
     }
 

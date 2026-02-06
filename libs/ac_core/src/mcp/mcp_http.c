@@ -101,7 +101,7 @@ static arc_err_t http_request(
     AC_LOG_DEBUG("HTTP response: %d, %zu bytes", resp.status_code, resp.body_len);
 
     /* Return response (caller frees) */
-    *response_json = strdup(resp.body);
+    *response_json = ARC_STRDUP(resp.body);
     arc_http_response_free(&resp);
 
     if (!*response_json) {

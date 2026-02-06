@@ -7,6 +7,7 @@
 
 #include "arc/tool.h"
 #include "arc/log.h"
+#include "arc/platform.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -219,13 +220,13 @@ char *ac_tool_registry_call(
     const ac_tool_ctx_t *ctx
 ) {
     if (!registry || !name) {
-        return strdup("{\"error\":\"Invalid arguments\"}");
+        return ARC_STRDUP("{\"error\":\"Invalid arguments\"}");
     }
 
     const ac_tool_t *tool = ac_tool_registry_find(registry, name);
     if (!tool) {
         AC_LOG_WARN("Tool not found: %s", name);
-        char *err = (char *)malloc(256);
+        char *err = (char *)ARC_MALLOC(256);
         if (err) {
             snprintf(err, 256, "{\"error\":\"Tool '%s' not found\"}", name);
         }
@@ -234,7 +235,7 @@ char *ac_tool_registry_call(
 
     if (!tool->execute) {
         AC_LOG_ERROR("Tool '%s' has no execute function", name);
-        return strdup("{\"error\":\"Tool has no execute function\"}");
+        return ARC_STRDUP("{\"error\":\"Tool has no execute function\"}");
     }
 
     AC_LOG_INFO("Executing tool: %s", name);
@@ -247,7 +248,7 @@ char *ac_tool_registry_call(
                  result ? result : "NULL",
                  (result && strlen(result) > 100) ? "..." : "");
 
-    return result ? result : strdup("{\"error\":\"Tool returned NULL\"}");
+    return result ? result : ARC_STRDUP("{\"error\":\"Tool returned NULL\"}");
 }
 
 /*============================================================================

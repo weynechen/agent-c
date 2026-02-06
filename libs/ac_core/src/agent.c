@@ -103,12 +103,12 @@ static char *build_tools_schema(agent_priv_t *priv) {
 
 static char *execute_tool_call(agent_priv_t *priv, const ac_tool_call_t *call) {
     if (!call || !call->name) {
-        return strdup("{\"error\":\"Invalid tool call\"}");
+        return ARC_STRDUP("{\"error\":\"Invalid tool call\"}");
     }
 
     if (!priv->tools) {
         AC_LOG_WARN("No tool registry configured");
-        return strdup("{\"error\":\"No tools available\"}");
+        return ARC_STRDUP("{\"error\":\"No tools available\"}");
     }
 
     ac_tool_ctx_t ctx = {
@@ -156,7 +156,7 @@ static char *execute_tool_call(agent_priv_t *priv, const ac_tool_call_t *call) {
         AC_HOOK_CALL(ac_hook_call_tool_end, &hook_info);
     }
 
-    return result ? result : strdup("{\"error\":\"Tool returned NULL\"}");
+    return result ? result : ARC_STRDUP("{\"error\":\"Tool returned NULL\"}");
 }
 
 /*============================================================================
@@ -338,7 +338,7 @@ static ac_agent_result_t *agent_run_impl(agent_priv_t *priv, const char *message
                     agent_append_message(priv, tool_msg);
                 }
 
-                if (result) free(result);
+                if (result) ARC_FREE(result);
             }
 
             /* Hook: iteration end */
@@ -438,12 +438,12 @@ static int response_has_tool_use(const ac_chat_response_t* response) {
  */
 static char *execute_tool_block(agent_priv_t *priv, const ac_content_block_t *block) {
     if (!block || !block->name) {
-        return strdup("{\"error\":\"Invalid tool block\"}");
+        return ARC_STRDUP("{\"error\":\"Invalid tool block\"}");
     }
 
     if (!priv->tools) {
         AC_LOG_WARN("No tool registry configured");
-        return strdup("{\"error\":\"No tools available\"}");
+        return ARC_STRDUP("{\"error\":\"No tools available\"}");
     }
 
     ac_tool_ctx_t ctx = {
@@ -491,7 +491,7 @@ static char *execute_tool_block(agent_priv_t *priv, const ac_content_block_t *bl
         AC_HOOK_CALL(ac_hook_call_tool_end, &hook_info);
     }
 
-    return result ? result : strdup("{\"error\":\"Tool returned NULL\"}");
+    return result ? result : ARC_STRDUP("{\"error\":\"Tool returned NULL\"}");
 }
 
 /**
@@ -519,7 +519,7 @@ static ac_message_t* create_tool_results_message(agent_priv_t *priv, const ac_ch
         /* Create tool_result content block */
         ac_content_block_t* result_block = (ac_content_block_t*)arena_alloc(priv->arena, sizeof(ac_content_block_t));
         if (!result_block) {
-            if (tool_result) free(tool_result);
+            if (tool_result) ARC_FREE(tool_result);
             continue;
         }
         memset(result_block, 0, sizeof(ac_content_block_t));
@@ -528,7 +528,7 @@ static ac_message_t* create_tool_results_message(agent_priv_t *priv, const ac_ch
         result_block->text = arena_strdup(priv->arena, tool_result ? tool_result : "{}");
         result_block->is_error = is_error;
 
-        if (tool_result) free(tool_result);
+        if (tool_result) ARC_FREE(tool_result);
 
         /* Append to result message */
         if (!result_msg->blocks) {
@@ -759,24 +759,24 @@ ac_agent_t *ac_agent_create(ac_session_t *session, const ac_agent_params_t *para
         return NULL;
     }
 
-    ac_agent_t *agent = (ac_agent_t *)calloc(1, sizeof(ac_agent_t));
+    ac_agent_t *agent = (ac_agent_t *)ARC_CALLOC(1, sizeof(ac_agent_t));
     if (!agent) {
         AC_LOG_ERROR("Failed to allocate agent");
         return NULL;
     }
 
-    agent_priv_t *priv = (agent_priv_t *)calloc(1, sizeof(agent_priv_t));
+    agent_priv_t *priv = (agent_priv_t *)ARC_CALLOC(1, sizeof(agent_priv_t));
     if (!priv) {
         AC_LOG_ERROR("Failed to allocate agent private data");
-        free(agent);
+        ARC_FREE(agent);
         return NULL;
     }
 
     priv->arena = arena_create(DEFAULT_ARENA_SIZE);
     if (!priv->arena) {
         AC_LOG_ERROR("Failed to create arena");
-        free(priv);
-        free(agent);
+        ARC_FREE(priv);
+        ARC_FREE(agent);
         return NULL;
     }
 
@@ -801,8 +801,8 @@ ac_agent_t *ac_agent_create(ac_session_t *session, const ac_agent_params_t *para
     if (!priv->llm) {
         AC_LOG_ERROR("Failed to create LLM");
         arena_destroy(priv->arena);
-        free(priv);
-        free(agent);
+        ARC_FREE(priv);
+        ARC_FREE(agent);
         return NULL;
     }
 
@@ -829,8 +829,8 @@ ac_agent_t *ac_agent_create(ac_session_t *session, const ac_agent_params_t *para
     if (ac_session_add_agent(session, agent) != ARC_OK) {
         AC_LOG_ERROR("Failed to add agent to session");
         arena_destroy(priv->arena);
-        free(priv);
-        free(agent);
+        ARC_FREE(priv);
+        ARC_FREE(agent);
         return NULL;
     }
 
@@ -870,7 +870,7 @@ void ac_agent_destroy(ac_agent_t *agent) {
 
         /* Free cached tools schema */
         if (priv->cached_tools_schema) {
-            free(priv->cached_tools_schema);
+            ARC_FREE(priv->cached_tools_schema);
             priv->cached_tools_schema = NULL;
         }
 
@@ -878,8 +878,8 @@ void ac_agent_destroy(ac_agent_t *agent) {
             AC_LOG_DEBUG("Destroying agent arena");
             arena_destroy(priv->arena);
         }
-        free(priv);
+        ARC_FREE(priv);
     }
 
-    free(agent);
+    ARC_FREE(agent);
 }

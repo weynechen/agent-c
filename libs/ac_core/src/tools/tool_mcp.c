@@ -8,6 +8,7 @@
 #include "arc/tool.h"
 #include "arc/mcp.h"
 #include "arc/log.h"
+#include "arc/platform.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -39,7 +40,7 @@ static char *mcp_tool_execute(
 
     mcp_wrapper_data_t *data = (mcp_wrapper_data_t *)priv;
     if (!data || !data->client || !data->tool_name) {
-        return strdup("{\"error\":\"Invalid MCP tool data\"}");
+        return ARC_STRDUP("{\"error\":\"Invalid MCP tool data\"}");
     }
 
     char *result = NULL;
@@ -53,7 +54,7 @@ static char *mcp_tool_execute(
     if (err != ARC_OK) {
         AC_LOG_ERROR("MCP tool call failed: %s (err=%d)", data->tool_name, err);
         if (!result) {
-            result = strdup("{\"error\":\"MCP tool call failed\"}");
+            result = ARC_STRDUP("{\"error\":\"MCP tool call failed\"}");
         }
     }
 
